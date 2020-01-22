@@ -40,8 +40,18 @@ type gasFeesImpl struct {
 	logger *logging.Logger
 }
 
+func (sc *gasFeesImpl) Clone() scenario.Scenario {
+	return &gasFeesImpl{
+		logger: logging.GetLogger("scenario/e2e/gas-fees/staking"),
+	}
+}
+
 func (sc *gasFeesImpl) Name() string {
 	return "gas-fees/staking"
+}
+
+func (sc *gasFeesImpl) Parameters() map[string]interface{} {
+	return NoParameters
 }
 
 func (sc *gasFeesImpl) Fixture() (*oasis.NetworkFixture, error) {

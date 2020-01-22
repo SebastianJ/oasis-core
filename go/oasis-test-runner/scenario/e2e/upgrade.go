@@ -124,6 +124,13 @@ func (sc *nodeUpgradeImpl) Name() string {
 	return "node-upgrade"
 }
 
+func (sc *nodeUpgradeImpl) Clone() scenario.Scenario {
+	return &nodeUpgradeImpl{
+		basicImpl: *sc.basicImpl.Clone().(*basicImpl),
+		ctx:       sc.ctx,
+	}
+}
+
 func (sc *nodeUpgradeImpl) Fixture() (*oasis.NetworkFixture, error) {
 	var tee node.TEEHardware
 	err := tee.FromString(viper.GetString(cfgTEEHardware))

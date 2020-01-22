@@ -67,6 +67,12 @@ type stakeCLIImpl struct {
 	basicImpl
 }
 
+func (s *stakeCLIImpl) Clone() scenario.Scenario {
+	return &stakeCLIImpl{
+		basicImpl: *s.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (s *stakeCLIImpl) Fixture() (*oasis.NetworkFixture, error) {
 	f, err := s.basicImpl.Fixture()
 	if err != nil {

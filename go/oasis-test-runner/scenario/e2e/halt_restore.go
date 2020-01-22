@@ -40,6 +40,12 @@ func newHaltRestoreImpl() scenario.Scenario {
 	}
 }
 
+func (sc *haltRestoreImpl) Clone() scenario.Scenario {
+	return &haltRestoreImpl{
+		basicImpl: *sc.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (sc *haltRestoreImpl) Fixture() (*oasis.NetworkFixture, error) {
 	f, err := sc.basicImpl.Fixture()
 	if err != nil {

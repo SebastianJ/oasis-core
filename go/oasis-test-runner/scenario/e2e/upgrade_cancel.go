@@ -55,6 +55,13 @@ func newNodeUpgradeCancelImpl() scenario.Scenario {
 	return sc
 }
 
+func (sc *nodeUpgradeCancelImpl) Clone() scenario.Scenario {
+	return &nodeUpgradeCancelImpl{
+		basicImpl: *sc.basicImpl.Clone().(*basicImpl),
+		ctx:       sc.ctx,
+	}
+}
+
 func (sc *nodeUpgradeCancelImpl) Name() string {
 	return "node-upgrade-cancel"
 }

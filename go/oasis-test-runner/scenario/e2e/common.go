@@ -32,6 +32,9 @@ var (
 	// Flags is the command line flags for the e2e tests.
 	Flags = flag.NewFlagSet("", flag.ContinueOnError)
 
+	// NoParameters is used when no parameters can be set for the scenario using CLI.
+	NoParameters = make(map[string]interface{})
+
 	runtimeID    common.Namespace
 	keymanagerID common.Namespace
 

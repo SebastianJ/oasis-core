@@ -36,6 +36,13 @@ func newRuntimeDynamicImpl() scenario.Scenario {
 	}
 }
 
+func (sc *runtimeDynamicImpl) Clone() scenario.Scenario {
+	return &runtimeDynamicImpl{
+		basicImpl: *sc.basicImpl.Clone().(*basicImpl),
+		epoch:     sc.epoch,
+	}
+}
+
 func (sc *runtimeDynamicImpl) Fixture() (*oasis.NetworkFixture, error) {
 	f, err := sc.basicImpl.Fixture()
 	if err != nil {

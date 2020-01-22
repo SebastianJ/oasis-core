@@ -30,8 +30,20 @@ type identityCLIImpl struct {
 	logger *logging.Logger
 }
 
+func (ident *identityCLIImpl) Clone() scenario.Scenario {
+	return &identityCLIImpl{
+		nodeBinary: ident.nodeBinary,
+		dataDir:    ident.dataDir,
+		logger:     logging.GetLogger("scenario/e2e/identity-cli"),
+	}
+}
+
 func (ident *identityCLIImpl) Name() string {
 	return "identity-cli"
+}
+
+func (ident *identityCLIImpl) Parameters() map[string]interface{} {
+	return NoParameters
 }
 
 func (ident *identityCLIImpl) Init(childEnv *env.Env, net *oasis.Network) error {

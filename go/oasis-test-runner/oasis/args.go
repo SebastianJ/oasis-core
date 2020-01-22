@@ -5,20 +5,26 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/spf13/viper"
 
 	"github.com/oasislabs/oasis-core/go/common"
 	commonGrpc "github.com/oasislabs/oasis-core/go/common/grpc"
 	"github.com/oasislabs/oasis-core/go/common/node"
 	"github.com/oasislabs/oasis-core/go/common/sgx"
+	"github.com/oasislabs/oasis-core/go/common/version"
 	"github.com/oasislabs/oasis-core/go/consensus/tendermint"
 	epochtime "github.com/oasislabs/oasis-core/go/epochtime/api"
 	"github.com/oasislabs/oasis-core/go/ias"
 	cmdCommon "github.com/oasislabs/oasis-core/go/oasis-node/cmd/common"
 	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/common/flags"
 	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/common/grpc"
+	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/common/metrics"
 	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/debug/byzantine"
 	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/debug/supplementarysanity"
+	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/registry/runtime"
 	runtimeRegistry "github.com/oasislabs/oasis-core/go/runtime/registry"
 	"github.com/oasislabs/oasis-core/go/storage"
 	workerCommon "github.com/oasislabs/oasis-core/go/worker/common"
@@ -400,6 +406,35 @@ func (args *argBuilder) appendSeedNodes(net *Network) *argBuilder {
 			"--" + tendermint.CfgP2PSeed, fmt.Sprintf("%s@127.0.0.1:%d", seed.tmAddress, seed.consensusPort),
 		}...)
 	}
+	return args
+}
+
+func (args *argBuilder) appendNodeMetrics(node *Node) *argBuilder {
+	args.vec = append(args.vec, []string{
+		"--" + metrics.CfgMetricsMode, metrics.MetricsModePush,
+		"--" + metrics.CfgMetricsAddr, viper.GetString(metrics.CfgMetricsAddr),
+		"--" + metrics.CfgMetricsPushInterval, viper.GetString(metrics.CfgMetricsPushInterval),
+		"--" + metrics.CfgMetricsPushJobName, node.Name}...)
+
+	// Append labels.
+	args.vec = append(args.vec, "--"+metrics.CfgMetricsPushLabels)
+	ti := node.net.env.TestInfo()
+	l := []string{"instance=" + ti.Instance,
+		"run=" + strconv.Itoa(ti.Run),
+		"test=" + ti.Name,
+		"software_version=" + version.SoftwareVersion,
+	}
+	// Populate it with test-provided parameters.
+	for k, v := range ti.ParameterSet {
+		l = append(l, metrics.EscapeLabelCharacters(k)+"="+v)
+	}
+	// Populate it with TEE hardware info.
+	if len(node.net.runtimes) > 0 {
+		l = append(l, metrics.EscapeLabelCharacters(runtime.CfgTEEHardware)+"="+node.net.runtimes[0].teeHardware.String())
+	}
+
+	args.vec = append(args.vec, strings.Join(l, ","))
+
 	return args
 }
 

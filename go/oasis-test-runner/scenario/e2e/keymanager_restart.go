@@ -27,6 +27,12 @@ func newKmRestartImpl() scenario.Scenario {
 	}
 }
 
+func (sc *kmRestartImpl) Clone() scenario.Scenario {
+	return &kmRestartImpl{
+		basicImpl: *sc.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (sc *kmRestartImpl) Run(childEnv *env.Env) error {
 	clientErrCh, cmd, err := sc.basicImpl.start(childEnv)
 	if err != nil {

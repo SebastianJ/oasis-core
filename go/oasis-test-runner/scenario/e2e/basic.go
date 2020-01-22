@@ -62,8 +62,21 @@ type basicImpl struct {
 	logger *logging.Logger
 }
 
+func (sc *basicImpl) Clone() scenario.Scenario {
+	return &basicImpl{
+		name:         sc.name,
+		clientBinary: sc.clientBinary,
+		clientArgs:   sc.clientArgs,
+		logger:       logging.GetLogger("scenario/e2e/" + sc.name),
+	}
+}
+
 func (sc *basicImpl) Name() string {
 	return sc.name
+}
+
+func (sc *basicImpl) Parameters() map[string]interface{} {
+	return NoParameters
 }
 
 func (sc *basicImpl) Fixture() (*oasis.NetworkFixture, error) {

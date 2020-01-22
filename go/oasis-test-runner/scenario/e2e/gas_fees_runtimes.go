@@ -22,6 +22,12 @@ type gasFeesRuntimesImpl struct {
 	basicImpl
 }
 
+func (sc *gasFeesRuntimesImpl) Clone() scenario.Scenario {
+	return &gasFeesRuntimesImpl{
+		basicImpl: *sc.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (sc *gasFeesRuntimesImpl) Fixture() (*oasis.NetworkFixture, error) {
 	f, err := sc.basicImpl.Fixture()
 	if err != nil {

@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 """
 Starts Prometheus docker container and setups docker networking so
-Ekiden and Prometheus containers can be connected.
+Oasis node and Prometheus containers can be connected.
 
-Script assumes Ekiden container is allready running and by default will
-attach to container named "ekiden-*****". Use "--ekiden-name" to overide
-the default name.
+Script assumes Oasis node container is already running and by default will
+attach to container named "oasis-node-*****". Use "--oasis-node-name" to
+override the default name.
 
 Usage:
     ./scripts/prometheus.py \
@@ -61,7 +61,7 @@ def create_network(name):
 
 
 def connect_container(network_name, container_name):
-    """ Connects container to netowork *network_name*. """
+    """ Connects container to network *network_name*. """
 
     container_id = get_container_id(container_name)
     # Check if container allready connected to the network:
@@ -76,7 +76,7 @@ def connect_container(network_name, container_name):
     # Container not yet connected.
     subprocess.check_call(
         ['docker', 'network', 'connect', '--alias',
-            'ekiden', network_name, container_id]
+            'oasis-node', network_name, container_id]
     )
 
 
@@ -116,12 +116,12 @@ if __name__ == '__main__':
 
     required.add_argument('--config', type=str, required=True,
                           help="Path to prometheus.yml config.")
-    optional.add_argument('--ekiden-name', type=str, default="ekiden-",
-                          help="Running ekiden container name.")
+    optional.add_argument('--oasis-node-name', type=str, default="oasis-node-",
+                          help="Running oasis node container name.")
     optional.add_argument('--name', type=str, default="prometheus",
                           help="Prometheus container name. Default: prometheus")
-    optional.add_argument('--network-name', type=str, default="prometheus-ekiden",
-                          help="Netowrk name for prometheus-ekiden container connection. Default: prometheus-ekiden")
+    optional.add_argument('--network-name', type=str, default="prometheus-oasis-node",
+                          help="Network name for prometheus-oasis-node container connection. Default: prometheus-oasis-node")
     optional.add_argument('--port', type=str, default='9090',
                           help="Localhost port exposing prometheus web interface. Default: 9090")
     optional.add_argument('--push-gateway', action='store_true', default=False,
@@ -131,7 +131,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     network_name = args.network_name
-    ekiden_container = args.ekiden_name
+    oasis_node_container = args.oasis_node_name
     prometheus_container = args.name
     exposed_port = args.port
     prometheus_config = args.config
@@ -145,16 +145,16 @@ if __name__ == '__main__':
 
     prometheus_config = os.path.abspath(prometheus_config)
 
-    # Checked if passed ekiden container is running
-    if not container_running(ekiden_container):
-        print("ERROR: Ekiden container: '{}' not running!".format(ekiden_container))
+    # Checked if passed Oasis node container is running
+    if not container_running(oasis_node_container):
+        print("ERROR: Oasis node container: '{}' not running!".format(oasis_node_container))
         sys.exit(1)
 
     if not network_exists(network_name):
         create_network(network_name)
 
-    # Connect ekiden container to network (if not yet connected).
-    connect_container(network_name, ekiden_container)
+    # Connect Oasis node container to network (if not yet connected).
+    connect_container(network_name, oasis_node_container)
 
     if push_gateway:
         run_pushgateway("prometheus-pushgateway", network_name)

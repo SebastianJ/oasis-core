@@ -37,6 +37,12 @@ func newRuntimePruneImpl() scenario.Scenario {
 	}
 }
 
+func (sc *runtimePruneImpl) Clone() scenario.Scenario {
+	return &runtimePruneImpl{
+		basicImpl: *sc.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (sc *runtimePruneImpl) Fixture() (*oasis.NetworkFixture, error) {
 	f, err := sc.basicImpl.Fixture()
 	if err != nil {

@@ -29,6 +29,12 @@ func newStorageSyncImpl() scenario.Scenario {
 	}
 }
 
+func (sc *storageSyncImpl) Clone() scenario.Scenario {
+	return &storageSyncImpl{
+		basicImpl: *sc.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (sc *storageSyncImpl) Fixture() (*oasis.NetworkFixture, error) {
 	f, err := sc.basicImpl.Fixture()
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/viper"
 
 	"github.com/oasislabs/oasis-core/go/common/crypto/drbg"
 	"github.com/oasislabs/oasis-core/go/common/crypto/signature"
@@ -25,6 +26,7 @@ import (
 	genesisFile "github.com/oasislabs/oasis-core/go/genesis/file"
 	genesisTestHelpers "github.com/oasislabs/oasis-core/go/genesis/tests"
 	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/common"
+	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/common/metrics"
 	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/genesis"
 	"github.com/oasislabs/oasis-core/go/oasis-test-runner/env"
 	"github.com/oasislabs/oasis-core/go/oasis-test-runner/log"
@@ -614,6 +616,9 @@ func (net *Network) startOasisNode(
 			appendIASProxy(net.iasProxy).
 			tendermintDebugAddrBookLenient().
 			tendermintDebugAllowDuplicateIP()
+	}
+	if viper.GetString(metrics.CfgMetricsAddr) != "" {
+		extraArgs = extraArgs.appendNodeMetrics(node)
 	}
 	args := append([]string{}, subCmd...)
 	args = append(args, baseArgs...)

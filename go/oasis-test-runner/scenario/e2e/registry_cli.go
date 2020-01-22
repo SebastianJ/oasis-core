@@ -44,6 +44,12 @@ type registryCLIImpl struct {
 	basicImpl
 }
 
+func (r *registryCLIImpl) Clone() scenario.Scenario {
+	return &registryCLIImpl{
+		basicImpl: *r.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (r *registryCLIImpl) Fixture() (*oasis.NetworkFixture, error) {
 	f, err := r.basicImpl.Fixture()
 	if err != nil {

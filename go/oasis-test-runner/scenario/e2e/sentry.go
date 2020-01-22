@@ -28,6 +28,12 @@ func newSentryImpl(name, clientBinary string, clientArgs []string) scenario.Scen
 	}
 }
 
+func (s *sentryImpl) Clone() scenario.Scenario {
+	return &sentryImpl{
+		basicImpl: *s.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (s *sentryImpl) Fixture() (*oasis.NetworkFixture, error) {
 	f, err := s.basicImpl.Fixture()
 	if err != nil {

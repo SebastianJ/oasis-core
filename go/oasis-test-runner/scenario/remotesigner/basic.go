@@ -5,9 +5,6 @@ import (
 	"path/filepath"
 	"time"
 
-	flag "github.com/spf13/pflag"
-	"github.com/spf13/viper"
-
 	"github.com/oasislabs/oasis-core/go/common/crypto/signature"
 	fileSigner "github.com/oasislabs/oasis-core/go/common/crypto/signature/signers/file"
 	remoteSigner "github.com/oasislabs/oasis-core/go/common/crypto/signature/signers/remote"
@@ -20,24 +17,34 @@ import (
 	"github.com/oasislabs/oasis-core/go/oasis-test-runner/scenario"
 )
 
-const cfgRemoteSignerBinary = "remote_signer.binary"
-
 var (
 	// Basic is the basic test case.
 	Basic scenario.Scenario = newBasicImpl()
-
-	// Flags is the command line flags for the remote signer tests.
-	Flags = flag.NewFlagSet("", flag.ContinueOnError)
 )
 
 func newBasicImpl() *basicImpl {
 	return &basicImpl{
-		logger: logging.GetLogger("remote-signer/basic"),
+		logger:       logging.GetLogger("remote-signer/basic"),
+		serverBinary: "oasis-remote-signer",
 	}
 }
 
 type basicImpl struct {
 	logger *logging.Logger
+
+	serverBinary string
+}
+
+func (sc *basicImpl) Clone() scenario.Scenario {
+	return &basicImpl{
+		logger: logging.GetLogger("remote-signer/basic"),
+	}
+}
+
+func (sc *basicImpl) Parameters() map[string]interface{} {
+	return map[string]interface{}{
+		"binary": &sc.serverBinary,
+	}
 }
 
 func (sc *basicImpl) Name() string {
@@ -53,15 +60,13 @@ func (sc *basicImpl) Init(childEnv *env.Env, net *oasis.Network) error {
 }
 
 func (sc *basicImpl) Run(childEnv *env.Env) error {
-	serverBinary := viper.GetString(cfgRemoteSignerBinary)
-
 	// Provision the server keys.
 	sc.logger.Info("provisioning the server keys")
 	if err := cli.RunSubCommand(
 		childEnv,
 		sc.logger,
 		"init",
-		serverBinary,
+		sc.serverBinary,
 		[]string{
 			"--" + cmdCommon.CfgDataDir, childEnv.Dir(),
 			"init",
@@ -87,7 +92,7 @@ func (sc *basicImpl) Run(childEnv *env.Env) error {
 		childEnv,
 		sc.logger,
 		"init_client",
-		serverBinary,
+		sc.serverBinary,
 		[]string{
 			"--" + cmdCommon.CfgDataDir, childEnv.Dir(),
 			"init_client",
@@ -106,7 +111,7 @@ func (sc *basicImpl) Run(childEnv *env.Env) error {
 		childEnv,
 		sc.logger,
 		"server",
-		serverBinary,
+		sc.serverBinary,
 		[]string{
 			"--" + cmdCommon.CfgDataDir, childEnv.Dir(),
 			"--client.certificate", filepath.Join(childEnv.Dir(), "remote_signer_client_cert.pem"),
@@ -188,9 +193,4 @@ func (sc *basicImpl) Run(childEnv *env.Env) error {
 	}
 
 	return nil
-}
-
-func init() {
-	Flags.String(cfgRemoteSignerBinary, "oasis-remote-signer", "path to the remote-signer binary")
-	_ = viper.BindPFlags(Flags)
 }

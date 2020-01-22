@@ -246,6 +246,17 @@ func (sc *txSourceImpl) startWorkload(childEnv *env.Env, errCh chan error, name 
 	return nil
 }
 
+func (sc *txSourceImpl) Clone() scenario.Scenario {
+	return &txSourceImpl{
+		basicImpl:             *sc.basicImpl.Clone().(*basicImpl),
+		workloads:             sc.workloads,
+		timeLimit:             sc.timeLimit,
+		nodeRestartInterval:   sc.nodeRestartInterval,
+		livenessCheckInterval: sc.livenessCheckInterval,
+		rng:                   sc.rng,
+	}
+}
+
 func (sc *txSourceImpl) Run(childEnv *env.Env) error {
 	if err := sc.net.Start(); err != nil {
 		return fmt.Errorf("scenario net Start: %w", err)

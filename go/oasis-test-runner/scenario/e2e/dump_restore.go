@@ -29,6 +29,12 @@ func newDumpRestoreImpl() scenario.Scenario {
 	return sc
 }
 
+func (sc *dumpRestoreImpl) Clone() scenario.Scenario {
+	return &dumpRestoreImpl{
+		basicImpl: *sc.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (sc *dumpRestoreImpl) Run(childEnv *env.Env) error {
 	clientErrCh, cmd, err := sc.basicImpl.start(childEnv)
 	if err != nil {

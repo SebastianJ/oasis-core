@@ -3,9 +3,8 @@ package committee
 import (
 	"context"
 	"errors"
-	"sync"
-
 	"github.com/prometheus/client_golang/prometheus"
+	"sync"
 
 	"github.com/oasislabs/oasis-core/go/common/identity"
 	"github.com/oasislabs/oasis-core/go/common/logging"
@@ -112,6 +111,7 @@ func (n *Node) Name() string {
 // Start starts the service.
 func (n *Node) Start() error {
 	go n.worker()
+
 	return nil
 }
 

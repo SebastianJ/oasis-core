@@ -6,7 +6,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"os"
+	"runtime"
+	runtimePprof "runtime/pprof"
+	"strconv"
 
+	"github.com/pkg/errors"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
@@ -28,6 +33,33 @@ type pprofService struct {
 
 	ctx   context.Context
 	errCh chan error
+}
+
+/// Writes the current process heap to given file with unique suffix.
+func WriteHeap(name string) error {
+	// Find unique filename.
+	var filename string
+	i := 1
+	for {
+		filename = name + ".prof." + strconv.Itoa(i)
+		if _, err := os.Stat(filename); err != nil {
+			break
+		}
+		i++
+	}
+
+	// Write memory profiling data.
+	mprof, merr := os.Create(filename)
+	if merr != nil {
+		return errors.Wrap(merr, "failed to create file for memory profiler output")
+	}
+	defer mprof.Close()
+	runtime.GC()
+	if merr = runtimePprof.WriteHeapProfile(mprof); merr != nil {
+		return errors.Wrap(merr, "failed to write heap profile")
+	}
+
+	return nil
 }
 
 func (p *pprofService) Start() error {

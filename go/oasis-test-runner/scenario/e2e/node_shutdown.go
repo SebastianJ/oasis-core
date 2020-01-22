@@ -27,6 +27,12 @@ func newNodeShutdownImpl() scenario.Scenario {
 	return sc
 }
 
+func (sc *nodeShutdownImpl) Clone() scenario.Scenario {
+	return &nodeShutdownImpl{
+		basicImpl: *sc.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (sc *nodeShutdownImpl) Name() string {
 	return "node-shutdown"
 }

@@ -76,6 +76,15 @@ func newByzantineImpl(script string, logWatcherHandlerFactories []log.WatcherHan
 	}
 }
 
+func (sc *byzantineImpl) Clone() scenario.Scenario {
+	return &byzantineImpl{
+		basicImpl:                  *sc.basicImpl.Clone().(*basicImpl),
+		script:                     sc.script,
+		identitySeed:               sc.identitySeed,
+		logWatcherHandlerFactories: sc.logWatcherHandlerFactories,
+	}
+}
+
 func (sc *byzantineImpl) Fixture() (*oasis.NetworkFixture, error) {
 	f, err := sc.basicImpl.Fixture()
 	if err != nil {

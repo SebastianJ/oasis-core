@@ -68,7 +68,6 @@ func main() {
 	_ = cmd.Register(e2e.Debond)
 
 	// Register the remote signer test cases.
-	rootCmd.Flags().AddFlagSet(remotesigner.Flags)
 	_ = cmd.Register(remotesigner.Basic)
 
 	// Execute the command, now that everything has been initialized.

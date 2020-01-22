@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -18,6 +20,7 @@ import (
 	"github.com/oasislabs/oasis-core/go/common/version"
 	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/common"
 	cmdFlags "github.com/oasislabs/oasis-core/go/oasis-node/cmd/common/flags"
+	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/common/metrics"
 	"github.com/oasislabs/oasis-core/go/oasis-test-runner/env"
 	"github.com/oasislabs/oasis-core/go/oasis-test-runner/oasis"
 	"github.com/oasislabs/oasis-core/go/oasis-test-runner/scenario"
@@ -28,6 +31,7 @@ const (
 	cfgLogFmt           = "log.format"
 	cfgLogLevel         = "log.level"
 	cfgLogNoStdout      = "log.no_stdout"
+	cfgNumRuns          = "num_runs"
 	cfgTest             = "test"
 	cfgParallelJobCount = "parallel.job_count"
 	cfgParallelJobIndex = "parallel.job_index"
@@ -50,6 +54,7 @@ var (
 	rootFlags = flag.NewFlagSet("", flag.ContinueOnError)
 
 	cfgFile string
+	numRuns int
 
 	scenarioMap      = make(map[string]scenario.Scenario)
 	defaultScenarios []scenario.Scenario
@@ -73,15 +78,123 @@ func Execute() {
 }
 
 // RegisterNondefault adds a scenario to the runner.
-func RegisterNondefault(scenario scenario.Scenario) error {
-	n := strings.ToLower(scenario.Name())
+func RegisterNondefault(s scenario.Scenario) error {
+	n := strings.ToLower(s.Name())
 	if _, ok := scenarioMap[n]; ok {
 		return errors.New("root: scenario already registered: " + n)
 	}
 
-	scenarioMap[n] = scenario
-	scenarios = append(scenarios, scenario)
+	scenarioMap[n] = s
+	scenarios = append(scenarios, s)
+
+	params := s.Parameters()
+	if len(params) > 0 {
+		for k, v := range scenario.ParametersToStringMap(params) {
+			// Re-register rootFlags for test parameters.
+			rootFlags.StringSlice("params."+n+"."+k, []string{v}, "")
+			rootCmd.PersistentFlags().AddFlagSet(rootFlags)
+			_ = viper.BindPFlag("params."+n+"."+k, rootFlags.Lookup("params."+n+"."+k))
+		}
+	}
+
 	return nil
+}
+
+// parseTestParams parses --params.<test_name>.<key1>=<val1>,<val2>... flags combinations, clones provided proto-
+// scenarios, and populates them so that each scenario instance has unique paramater set. Returns mapping test name ->
+// list of scenario instances.
+func parseTestParams(toRun []scenario.Scenario) (map[string][]scenario.Scenario, error) {
+	r := make(map[string][]scenario.Scenario)
+	for _, s := range toRun {
+		zippedParams := make(map[string][]string)
+		for k := range s.Parameters() {
+			userVal := viper.GetStringSlice("params." + s.Name() + "." + k)
+			if userVal == nil {
+				continue
+			}
+			zippedParams[k] = userVal
+		}
+
+		parameterSets := computeParamSets(zippedParams, map[string]string{})
+
+		// For each parameter set combination, clone a scenario and apply user-provided parameter value.
+		for _, ps := range parameterSets {
+			sCloned := s.Clone()
+			for k, userVal := range ps {
+				v := sCloned.Parameters()[k]
+				switch v := v.(type) {
+				case *int:
+					val, err := strconv.ParseInt(userVal, 10, 32)
+					if err != nil {
+						return nil, err
+					}
+					*v = int(val)
+				case *int64:
+					val, err := strconv.ParseInt(userVal, 10, 64)
+					if err != nil {
+						return nil, err
+					}
+					*v = val
+				case *float64:
+					val, err := strconv.ParseFloat(userVal, 64)
+					if err != nil {
+						return nil, err
+					}
+					*v = val
+				case *bool:
+					val, err := strconv.ParseBool(userVal)
+					if err != nil {
+						return nil, err
+					}
+					*v = val
+				case *string:
+					*v = userVal
+				default:
+					return nil, errors.New(fmt.Sprintf("cannot parse parameter. Unknown type %v", v))
+				}
+			}
+			r[s.Name()] = append(r[s.Name()], sCloned)
+		}
+
+		// No parameters provided over CLI, keep a single copy.
+		if len(parameterSets) == 0 {
+			r[s.Name()] = []scenario.Scenario{s}
+		}
+	}
+
+	return r, nil
+}
+
+// computeParamSets recursively combines a map of string slices into all possible key=>value parameter sets.
+func computeParamSets(zp map[string][]string, ps map[string]string) []map[string]string {
+	// Recursion stops when zp is empty.
+	if len(zp) == 0 {
+		// XXX: How do I clone a map in golang?
+		psCloned := map[string]string{}
+		for k, v := range ps {
+			psCloned[k] = v
+		}
+		return []map[string]string{psCloned}
+	}
+
+	rps := []map[string]string{}
+
+	// XXX: How do I clone a map in golang?
+	zpCloned := map[string][]string{}
+	for k, v := range zp {
+		zpCloned[k] = v
+	}
+	// Take first element from cloned zp and do recursion.
+	for k, vals := range zpCloned {
+		delete(zpCloned, k)
+		for _, v := range vals {
+			ps[k] = v
+			rps = append(rps, computeParamSets(zpCloned, ps)...)
+		}
+		break
+	}
+
+	return rps
 }
 
 // Register adds a scenario to the runner and the default scenarios list.
@@ -177,61 +290,89 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	parallelJobCount := viper.GetInt(cfgParallelJobCount)
 	parallelJobIndex := viper.GetInt(cfgParallelJobIndex)
 
-	for index, v := range toRun {
-		n := v.Name()
+	// Parse test parameters passed by CLI.
+	var toRunExploded map[string][]scenario.Scenario
+	toRunExploded, err = parseTestParams(toRun)
+	if err != nil {
+		return errors.Wrap(err, "root: failed to parse test params")
+	}
 
-		if index%parallelJobCount != parallelJobIndex {
-			logger.Info("skipping test case (assigned to different parallel job)",
-				"test", n,
-			)
-			continue
-		}
+	// Run all test instances.
+	index := 0
+	for run := 0; run < numRuns; run++ {
+		for name, sc := range toRunExploded {
+			for i, v := range sc {
+				// Maintain unique scenario datadir.
+				n := fmt.Sprintf("%s/%d", name, run*len(sc)+i)
 
-		if excludeMap[strings.ToLower(n)] {
-			logger.Info("skipping test case (excluded by environment)",
-				"test", n,
-			)
-			continue
-		}
+				if index%parallelJobCount != parallelJobIndex {
+					logger.Info("skipping test case (assigned to different parallel job)",
+						"test", n,
+					)
+					index++
+					continue
+				}
 
-		logger.Info("running test case",
-			"test", n,
-		)
+				if excludeMap[strings.ToLower(v.Name())] {
+					logger.Info("skipping test case (excluded by environment)",
+						"test", n,
+					)
+					index++
+					continue
+				}
 
-		childEnv, err := rootEnv.NewChild(n)
-		if err != nil {
-			logger.Error("failed to setup child environment",
-				"err", err,
-				"test", n,
-			)
-			return errors.Wrap(err, "root: failed to setup child environment")
-		}
+				logger.Info("running test case",
+					"test", n,
+				)
 
-		if err = doScenario(childEnv, v); err != nil {
-			logger.Error("failed to run test case",
-				"err", err,
-				"test", n,
-			)
-			err = errors.Wrap(err, "root: failed to run test case")
-		}
+				childEnv, err := rootEnv.NewChild(n, env.TestInstanceInfo{
+					Name:         v.Name(),
+					Instance:     filepath.Base(rootEnv.Dir()),
+					ParameterSet: scenario.ParametersToStringMap(v.Parameters()),
+					Run:          run,
+				})
+				if err != nil {
+					logger.Error("failed to setup child environment",
+						"err", err,
+						"test", n,
+					)
+					return errors.Wrap(err, "root: failed to setup child environment")
+				}
 
-		if cleanErr := doCleanup(childEnv); cleanErr != nil {
-			logger.Error("failed to clean up child envionment",
-				"err", cleanErr,
-				"test", n,
-			)
-			if err == nil {
-				err = errors.Wrap(cleanErr, "root: failed to clean up child enviroment")
+				// Dump current parameter set to file.
+				if err = childEnv.WriteTestInstanceInfo(); err != nil {
+					return err
+				}
+
+				if err = doScenario(childEnv, v); err != nil {
+					logger.Error("failed to run test case",
+						"err", err,
+						"test", n,
+					)
+					err = errors.Wrap(err, "root: failed to run test case")
+				}
+
+				if cleanErr := doCleanup(childEnv); cleanErr != nil {
+					logger.Error("failed to clean up child envionment",
+						"err", cleanErr,
+						"test", n,
+					)
+					if err == nil {
+						err = errors.Wrap(cleanErr, "root: failed to clean up child enviroment")
+					}
+				}
+
+				if err != nil {
+					return err
+				}
+
+				logger.Info("passed test case",
+					"test", n,
+				)
+
+				index++
 			}
 		}
-
-		if err != nil {
-			return err
-		}
-
-		logger.Info("passed test case",
-			"test", n,
-		)
 	}
 
 	return nil
@@ -298,7 +439,16 @@ func runList(cmd *cobra.Command, args []string) {
 		})
 
 		for _, v := range scenarios {
-			fmt.Printf("  * %v\n", v.Name())
+			fmt.Printf("  * %v", v.Name())
+			params := v.Parameters()
+			if len(params) > 0 {
+				fmt.Printf(" (parameters:")
+				for p := range params {
+					fmt.Printf(" %v", p)
+				}
+				fmt.Printf(")")
+			}
+			fmt.Printf("\n")
 		}
 	}
 }
@@ -313,6 +463,9 @@ func init() {
 	rootFlags.Var(&logLevel, cfgLogLevel, "log level")
 	rootFlags.Bool(cfgLogNoStdout, false, "do not mutiplex logs to stdout")
 	rootFlags.StringSliceP(cfgTest, "t", nil, "test(s) to run")
+	rootFlags.String(metrics.CfgMetricsAddr, "", "metrics push address")
+	rootFlags.Duration(metrics.CfgMetricsPushInterval, 5*time.Second, "push interval for node exporter and oasis nodes")
+	rootFlags.IntVarP(&numRuns, cfgNumRuns, "n", 1, "number of runs for given test(s)")
 	rootFlags.Int(cfgParallelJobCount, 1, "(for CI) number of overall parallel jobs")
 	rootFlags.Int(cfgParallelJobIndex, 0, "(for CI) index of this parallel job")
 	_ = viper.BindPFlags(rootFlags)
