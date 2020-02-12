@@ -100,10 +100,10 @@ func getNodeDesc(rng *rand.Rand, nodeIdentity *identity.Identity, entityID signa
 		Expiration: 0,
 		Roles:      availableRoles[rng.Intn(len(availableRoles))],
 		Committee: node.CommitteeInfo{
-			Certificate: nodeIdentity.TLSCertificate.Certificate[0],
+			Certificate: nodeIdentity.GetTLSCertificate().Certificate[0],
 			Addresses: []node.CommitteeAddress{
 				{
-					Certificate: nodeIdentity.TLSCertificate.Certificate[0],
+					Certificate: nodeIdentity.GetTLSCertificate().Certificate[0],
 					Address:     nodeAddr,
 				},
 			},
@@ -137,7 +137,7 @@ func signNode(identity *identity.Identity, nodeDesc *node.Node) (*node.MultiSign
 		identity.NodeSigner,
 		identity.P2PSigner,
 		identity.ConsensusSigner,
-		identity.TLSSigner,
+		identity.GetTLSSigner(),
 	}
 
 	sigNode, err := node.MultiSignNode(nodeSigners, registry.RegisterNodeSignatureContext, nodeDesc)
@@ -207,7 +207,7 @@ func (r *registration) Run(gracefulExit context.Context, rng *rand.Rand, conn *g
 			if err != nil {
 				return fmt.Errorf("failed to create a temporary directory: %w", err)
 			}
-			ident, err := identity.LoadOrGenerate(dataDir, memorySigner.NewFactory())
+			ident, err := identity.LoadOrGenerate(dataDir, memorySigner.NewFactory(), false)
 			if err != nil {
 				return fmt.Errorf("failed generating account node identity: %w", err)
 			}
