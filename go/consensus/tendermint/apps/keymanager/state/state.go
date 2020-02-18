@@ -1,13 +1,14 @@
 package state
 
 import (
-	"github.com/tendermint/iavl"
+	"context"
 
 	"github.com/oasislabs/oasis-core/go/common"
 	"github.com/oasislabs/oasis-core/go/common/cbor"
 	"github.com/oasislabs/oasis-core/go/common/keyformat"
-	"github.com/oasislabs/oasis-core/go/consensus/tendermint/abci"
+	abciAPI "github.com/oasislabs/oasis-core/go/consensus/tendermint/api"
 	"github.com/oasislabs/oasis-core/go/keymanager/api"
+	mkvs "github.com/oasislabs/oasis-core/go/storage/mkvs/urkel"
 )
 
 var (
@@ -18,11 +19,11 @@ var (
 )
 
 type ImmutableState struct {
-	*abci.ImmutableState
+	*abciAPI.ImmutableState
 }
 
-func (st *ImmutableState) Statuses() ([]*api.Status, error) {
-	rawStatuses, err := st.getStatusesRaw()
+func (st *ImmutableState) Statuses(ctx context.Context) ([]*api.Status, error) {
+	rawStatuses, err := st.getStatusesRaw(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +32,7 @@ func (st *ImmutableState) Statuses() ([]*api.Status, error) {
 	for _, raw := range rawStatuses {
 		var status api.Status
 		if err = cbor.Unmarshal(raw, &status); err != nil {
-			return nil, err
+			return nil, abciAPI.UnavailableStateError(err)
 		}
 		statuses = append(statuses, &status)
 	}
@@ -39,39 +40,41 @@ func (st *ImmutableState) Statuses() ([]*api.Status, error) {
 	return statuses, nil
 }
 
-func (st *ImmutableState) getStatusesRaw() ([][]byte, error) {
-	var rawVec [][]byte
-	st.Snapshot.IterateRange(
-		statusKeyFmt.Encode(),
-		nil,
-		true,
-		func(key, value []byte) bool {
-			if !statusKeyFmt.Decode(key) {
-				return true
-			}
-			rawVec = append(rawVec, value)
-			return false
-		},
-	)
+func (st *ImmutableState) getStatusesRaw(ctx context.Context) ([][]byte, error) {
+	it := st.Tree.NewIterator(ctx)
+	defer it.Close()
 
+	var rawVec [][]byte
+	for it.Seek(statusKeyFmt.Encode()); it.Valid(); it.Next() {
+		if !statusKeyFmt.Decode(it.Key()) {
+			break
+		}
+		rawVec = append(rawVec, it.Value())
+	}
+	if it.Err() != nil {
+		return nil, abciAPI.UnavailableStateError(it.Err())
+	}
 	return rawVec, nil
 }
 
-func (st *ImmutableState) Status(id common.Namespace) (*api.Status, error) {
-	_, raw := st.Snapshot.Get(statusKeyFmt.Encode(&id))
-	if raw == nil {
+func (st *ImmutableState) Status(ctx context.Context, id common.Namespace) (*api.Status, error) {
+	data, err := st.Tree.Get(ctx, statusKeyFmt.Encode(&id))
+	if err != nil {
+		return nil, abciAPI.UnavailableStateError(err)
+	}
+	if data == nil {
 		return nil, api.ErrNoSuchStatus
 	}
 
 	var status api.Status
-	if err := cbor.Unmarshal(raw, &status); err != nil {
-		return nil, err
+	if err := cbor.Unmarshal(data, &status); err != nil {
+		return nil, abciAPI.UnavailableStateError(err)
 	}
 	return &status, nil
 }
 
-func NewImmutableState(state abci.ApplicationState, version int64) (*ImmutableState, error) {
-	inner, err := abci.NewImmutableState(state, version)
+func NewImmutableState(ctx context.Context, state abciAPI.ApplicationState, version int64) (*ImmutableState, error) {
+	inner, err := abciAPI.NewImmutableState(ctx, state, version)
 	if err != nil {
 		return nil, err
 	}
@@ -81,20 +84,18 @@ func NewImmutableState(state abci.ApplicationState, version int64) (*ImmutableSt
 // MutableState is a mutable key manager state wrapper.
 type MutableState struct {
 	*ImmutableState
-
-	tree *iavl.MutableTree
 }
 
-func (st *MutableState) SetStatus(status *api.Status) {
-	st.tree.Set(statusKeyFmt.Encode(&status.ID), cbor.Marshal(status))
+func (st *MutableState) SetStatus(ctx context.Context, status *api.Status) error {
+	err := st.Tree.Insert(ctx, statusKeyFmt.Encode(&status.ID), cbor.Marshal(status))
+	return abciAPI.UnavailableStateError(err)
 }
 
 // NewMutableState creates a new mutable key manager state wrapper.
-func NewMutableState(tree *iavl.MutableTree) *MutableState {
-	inner := &abci.ImmutableState{Snapshot: tree.ImmutableTree}
-
+func NewMutableState(tree mkvs.KeyValueTree) *MutableState {
 	return &MutableState{
-		ImmutableState: &ImmutableState{inner},
-		tree:           tree,
+		ImmutableState: &ImmutableState{
+			&abciAPI.ImmutableState{Tree: tree},
+		},
 	}
 }

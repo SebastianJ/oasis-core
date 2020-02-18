@@ -4,9 +4,9 @@ package roothash
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
-	"github.com/pkg/errors"
 	"github.com/tendermint/tendermint/abci/types"
 
 	beacon "github.com/oasislabs/oasis-core/go/beacon/api"
@@ -43,7 +43,7 @@ type timerContext struct {
 }
 
 type rootHashApplication struct {
-	state abci.ApplicationState
+	state tmapi.ApplicationState
 
 	beacon beacon.Backend
 }
@@ -68,14 +68,14 @@ func (app *rootHashApplication) Dependencies() []string {
 	return []string{schedulerapp.AppName, stakingapp.AppName}
 }
 
-func (app *rootHashApplication) OnRegister(state abci.ApplicationState) {
+func (app *rootHashApplication) OnRegister(state tmapi.ApplicationState) {
 	app.state = state
 }
 
 func (app *rootHashApplication) OnCleanup() {
 }
 
-func (app *rootHashApplication) BeginBlock(ctx *abci.Context, request types.RequestBeginBlock) error {
+func (app *rootHashApplication) BeginBlock(ctx *tmapi.Context, request types.RequestBeginBlock) error {
 	// Check if rescheduling has taken place.
 	rescheduled := ctx.HasEvent(schedulerapp.AppName, schedulerapp.KeyElected)
 	// Check if there was an epoch transition.
@@ -87,13 +87,13 @@ func (app *rootHashApplication) BeginBlock(ctx *abci.Context, request types.Requ
 	return nil
 }
 
-func (app *rootHashApplication) onCommitteeChanged(ctx *abci.Context, epoch epochtime.EpochTime) error {
+func (app *rootHashApplication) onCommitteeChanged(ctx *tmapi.Context, epoch epochtime.EpochTime) error {
 	state := roothashState.NewMutableState(ctx.State())
 	schedState := schedulerState.NewMutableState(ctx.State())
 	regState := registryState.NewMutableState(ctx.State())
-	runtimes, _ := regState.Runtimes()
+	runtimes, _ := regState.Runtimes(ctx)
 
-	params, err := state.ConsensusParameters()
+	params, err := state.ConsensusParameters(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get consensus parameters: %w", err)
 	}
@@ -115,7 +115,7 @@ func (app *rootHashApplication) onCommitteeChanged(ctx *abci.Context, epoch epoc
 			continue
 		}
 
-		rtState, err := state.RuntimeState(rt.ID)
+		rtState, err := state.RuntimeState(ctx, rt.ID)
 		if err != nil {
 			return fmt.Errorf("failed to fetch runtime state: %w", err)
 		}
@@ -147,7 +147,7 @@ func (app *rootHashApplication) onCommitteeChanged(ctx *abci.Context, epoch epoc
 			}
 		}
 		if (empty || !sufficientStake) && !params.DebugDoNotSuspendRuntimes {
-			if err := app.suspendUnpaidRuntime(ctx, rtState, regState); err != nil {
+			if err = app.suspendUnpaidRuntime(ctx, rtState, regState); err != nil {
 				return err
 			}
 		}
@@ -179,14 +179,16 @@ func (app *rootHashApplication) onCommitteeChanged(ctx *abci.Context, epoch epoc
 		// Update the runtime descriptor to the latest per-epoch value.
 		rtState.Runtime = rt
 
-		state.SetRuntimeState(rtState)
+		if err = state.SetRuntimeState(ctx, rtState); err != nil {
+			return fmt.Errorf("failed to set runtime state: %w", err)
+		}
 	}
 
 	return nil
 }
 
 func (app *rootHashApplication) suspendUnpaidRuntime(
-	ctx *abci.Context,
+	ctx *tmapi.Context,
 	rtState *roothashState.RuntimeState,
 	regState *registryState.MutableState,
 ) error {
@@ -194,7 +196,7 @@ func (app *rootHashApplication) suspendUnpaidRuntime(
 		"runtime_id", rtState.Runtime.ID,
 	)
 
-	if err := regState.SuspendRuntime(rtState.Runtime.ID); err != nil {
+	if err := regState.SuspendRuntime(ctx, rtState.Runtime.ID); err != nil {
 		return err
 	}
 
@@ -208,7 +210,7 @@ func (app *rootHashApplication) suspendUnpaidRuntime(
 }
 
 func (app *rootHashApplication) prepareNewCommittees(
-	ctx *abci.Context,
+	ctx *tmapi.Context,
 	epoch epochtime.EpochTime,
 	rtState *roothashState.RuntimeState,
 	schedState *schedulerState.MutableState,
@@ -246,7 +248,7 @@ func (app *rootHashApplication) prepareNewCommittees(
 
 	// NOTE: There will later be multiple executor committees.
 	var executorCommittees []*scheduler.Committee
-	xc1, err := schedState.Committee(scheduler.KindComputeExecutor, rtID)
+	xc1, err := schedState.Committee(ctx, scheduler.KindComputeExecutor, rtID)
 	if err != nil {
 		ctx.Logger().Error("checkCommittees: failed to get executor committee from scheduler",
 			"err", err,
@@ -279,7 +281,7 @@ func (app *rootHashApplication) prepareNewCommittees(
 
 	mergePool = new(commitment.Pool)
 	committeeIDParts = append(committeeIDParts, []byte("merge committee follows"))
-	mergeCommittee, err := schedState.Committee(scheduler.KindComputeMerge, rtID)
+	mergeCommittee, err := schedState.Committee(ctx, scheduler.KindComputeMerge, rtID)
 	if err != nil {
 		ctx.Logger().Error("checkCommittees: failed to get merge committee from scheduler",
 			"err", err,
@@ -305,7 +307,7 @@ func (app *rootHashApplication) prepareNewCommittees(
 	return
 }
 
-func (app *rootHashApplication) emitEmptyBlock(ctx *abci.Context, runtime *roothashState.RuntimeState, hdrType block.HeaderType) {
+func (app *rootHashApplication) emitEmptyBlock(ctx *tmapi.Context, runtime *roothashState.RuntimeState, hdrType block.HeaderType) {
 	blk := block.NewEmptyBlock(runtime.CurrentBlock, uint64(ctx.Now().Unix()), hdrType)
 
 	runtime.Timer.Stop(ctx)
@@ -318,7 +320,7 @@ func (app *rootHashApplication) emitEmptyBlock(ctx *abci.Context, runtime *rooth
 	ctx.EmitEvent(tmapi.NewEventBuilder(app.Name()).Attribute(KeyFinalized, cbor.Marshal(tagV)))
 }
 
-func (app *rootHashApplication) ExecuteTx(ctx *abci.Context, tx *transaction.Transaction) error {
+func (app *rootHashApplication) ExecuteTx(ctx *tmapi.Context, tx *transaction.Transaction) error {
 	state := roothashState.NewMutableState(ctx.State())
 
 	switch tx.Method {
@@ -341,12 +343,7 @@ func (app *rootHashApplication) ExecuteTx(ctx *abci.Context, tx *transaction.Tra
 	}
 }
 
-func (app *rootHashApplication) ForeignExecuteTx(ctx *abci.Context, other abci.Application, tx *transaction.Transaction) error {
-	var st *roothash.Genesis
-	ensureGenesis := func() {
-		st = &app.state.Genesis().RootHash
-	}
-
+func (app *rootHashApplication) ForeignExecuteTx(ctx *tmapi.Context, other abci.Application, tx *transaction.Transaction) error {
 	switch other.Name() {
 	case registryapp.AppName:
 		for _, ev := range ctx.GetEvents() {
@@ -358,15 +355,16 @@ func (app *rootHashApplication) ForeignExecuteTx(ctx *abci.Context, other abci.A
 				if bytes.Equal(pair.GetKey(), registryapp.KeyRuntimeRegistered) {
 					var rt registry.Runtime
 					if err := cbor.Unmarshal(pair.GetValue(), &rt); err != nil {
-						return errors.Wrap(err, "roothash: failed to deserialize new runtime")
+						return fmt.Errorf("roothash: failed to deserialize new runtime: %w", err)
 					}
 
 					ctx.Logger().Debug("ForeignDeliverTx: new runtime",
 						"runtime", rt.ID,
 					)
 
-					ensureGenesis()
-					app.onNewRuntime(ctx, &rt, st)
+					if err := app.onNewRuntime(ctx, &rt, nil); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -375,22 +373,27 @@ func (app *rootHashApplication) ForeignExecuteTx(ctx *abci.Context, other abci.A
 	return nil
 }
 
-func (app *rootHashApplication) onNewRuntime(ctx *abci.Context, runtime *registry.Runtime, genesis *roothash.Genesis) {
-	state := roothashState.NewMutableState(ctx.State())
-
+func (app *rootHashApplication) onNewRuntime(ctx *tmapi.Context, runtime *registry.Runtime, genesis *roothash.Genesis) error {
 	if !runtime.IsCompute() {
 		ctx.Logger().Warn("onNewRuntime: ignoring non-compute runtime",
 			"runtime", runtime,
 		)
-		return
+		return nil
 	}
 
 	// Check if state already exists for the given runtime.
-	if _, err := state.RuntimeState(runtime.ID); err != roothash.ErrInvalidRuntime {
+	state := roothashState.NewMutableState(ctx.State())
+	_, err := state.RuntimeState(ctx, runtime.ID)
+	switch err {
+	case nil:
 		ctx.Logger().Warn("onNewRuntime: state for runtime already exists",
 			"runtime", runtime,
 		)
-		return
+		return nil
+	case roothash.ErrInvalidRuntime:
+		// Runtime does not yet exist.
+	default:
+		return fmt.Errorf("failed to fetch runtime state: %w", err)
 	}
 
 	// Create genesis block.
@@ -401,6 +404,7 @@ func (app *rootHashApplication) onNewRuntime(ctx *abci.Context, runtime *registr
 	genesisBlock.Header.StateRoot = runtime.Genesis.StateRoot
 	genesisBlock.Header.StorageSignatures = runtime.Genesis.StorageReceipts
 	if ctx.IsInitChain() {
+		// NOTE: Outside InitChain the genesis argument will be nil.
 		genesisRts := genesis.RuntimeStates[runtime.ID]
 		if genesisRts != nil {
 			genesisBlock.Header.Round = genesisRts.Round
@@ -411,12 +415,15 @@ func (app *rootHashApplication) onNewRuntime(ctx *abci.Context, runtime *registr
 
 	// Create new state containing the genesis block.
 	timerCtx := &timerContext{ID: runtime.ID}
-	state.SetRuntimeState(&roothashState.RuntimeState{
+	err = state.SetRuntimeState(ctx, &roothashState.RuntimeState{
 		Runtime:      runtime,
 		CurrentBlock: genesisBlock,
 		GenesisBlock: genesisBlock,
 		Timer:        *abci.NewTimer(ctx, app, timerKindRound, runtime.ID[:], cbor.Marshal(timerCtx)),
 	})
+	if err != nil {
+		return fmt.Errorf("failed to set runtime state: %w", err)
+	}
 
 	ctx.Logger().Debug("onNewRuntime: created genesis state for runtime",
 		"runtime", runtime,
@@ -428,20 +435,21 @@ func (app *rootHashApplication) onNewRuntime(ctx *abci.Context, runtime *registr
 		Round: genesisBlock.Header.Round,
 	}
 	ctx.EmitEvent(tmapi.NewEventBuilder(app.Name()).Attribute(KeyFinalized, cbor.Marshal(tagV)))
+	return nil
 }
 
-func (app *rootHashApplication) EndBlock(ctx *abci.Context, request types.RequestEndBlock) (types.ResponseEndBlock, error) {
+func (app *rootHashApplication) EndBlock(ctx *tmapi.Context, request types.RequestEndBlock) (types.ResponseEndBlock, error) {
 	return types.ResponseEndBlock{}, nil
 }
 
-func (app *rootHashApplication) FireTimer(ctx *abci.Context, timer *abci.Timer) error {
+func (app *rootHashApplication) FireTimer(ctx *tmapi.Context, timer *abci.Timer) (err error) {
 	if timer.Kind() != timerKindRound {
 		return errors.New("tendermint/roothash: unexpected timer")
 	}
 
 	var tCtx timerContext
-	if err := cbor.Unmarshal(timer.Data(ctx), &tCtx); err != nil {
-		return err
+	if err = cbor.Unmarshal(timer.Data(ctx), &tCtx); err != nil {
+		return fmt.Errorf("failed to unmarshal timer data: %w", err)
 	}
 
 	ctx.Logger().Warn("FireTimer: timer fired",
@@ -449,12 +457,12 @@ func (app *rootHashApplication) FireTimer(ctx *abci.Context, timer *abci.Timer) 
 	)
 
 	state := roothashState.NewMutableState(ctx.State())
-	rtState, err := state.RuntimeState(tCtx.ID)
+	rtState, err := state.RuntimeState(ctx, tCtx.ID)
 	if err != nil {
 		ctx.Logger().Error("FireTimer: failed to get state associated with timer",
 			"err", err,
 		)
-		return err
+		return fmt.Errorf("failed to get runtime state: %w", err)
 	}
 
 	latestBlock := rtState.CurrentBlock
@@ -476,14 +484,18 @@ func (app *rootHashApplication) FireTimer(ctx *abci.Context, timer *abci.Timer) 
 		"timer_round", tCtx.Round,
 	)
 
-	defer state.SetRuntimeState(rtState)
+	defer func() {
+		if err2 := state.SetRuntimeState(ctx, rtState); err2 != nil {
+			err = fmt.Errorf("failed to set runtime state: %w", err2)
+		}
+	}()
 
 	if rtState.Round.MergePool.IsTimeout(ctx.Now()) {
-		if err := app.tryFinalizeBlock(ctx, rtState, true); err != nil {
+		if err = app.tryFinalizeBlock(ctx, rtState, true); err != nil {
 			ctx.Logger().Error("failed to finalize block",
 				"err", err,
 			)
-			panic(err)
+			return fmt.Errorf("failed to finalize block: %w", err)
 		}
 	}
 	for _, pool := range rtState.Round.ExecutorPool.GetTimeoutCommittees(ctx.Now()) {
@@ -494,7 +506,7 @@ func (app *rootHashApplication) FireTimer(ctx *abci.Context, timer *abci.Timer) 
 }
 
 func (app *rootHashApplication) updateTimer(
-	ctx *abci.Context,
+	ctx *tmapi.Context,
 	rtState *roothashState.RuntimeState,
 	blockNr uint64,
 ) {
@@ -521,7 +533,7 @@ func (app *rootHashApplication) updateTimer(
 }
 
 func (app *rootHashApplication) tryFinalizeExecute(
-	ctx *abci.Context,
+	ctx *tmapi.Context,
 	rtState *roothashState.RuntimeState,
 	pool *commitment.Pool,
 	forced bool,
@@ -596,7 +608,7 @@ func (app *rootHashApplication) tryFinalizeExecute(
 }
 
 func (app *rootHashApplication) tryFinalizeMerge(
-	ctx *abci.Context,
+	ctx *tmapi.Context,
 	rtState *roothashState.RuntimeState,
 	forced bool,
 ) *block.Block {
@@ -665,8 +677,8 @@ func (app *rootHashApplication) tryFinalizeMerge(
 	return nil
 }
 
-func (app *rootHashApplication) postProcessFinalizedBlock(ctx *abci.Context, rtState *roothashState.RuntimeState, blk *block.Block) error {
-	checkpoint := ctx.NewStateCheckpoint()
+func (app *rootHashApplication) postProcessFinalizedBlock(ctx *tmapi.Context, rtState *roothashState.RuntimeState, blk *block.Block) error {
+	checkpoint := ctx.StartCheckpoint()
 	defer checkpoint.Close()
 
 	for _, message := range blk.Header.Messages {
@@ -682,15 +694,14 @@ func (app *rootHashApplication) postProcessFinalizedBlock(ctx *abci.Context, rtS
 				logging.LogEvent, roothash.LogEventMessageUnsat,
 			)
 
-			// Roll back changes from message handling.
-			checkpoint.Rollback()
-
 			// Substitute empty block.
 			app.emitEmptyBlock(ctx, rtState, block.RoundFailed)
 
 			return nil
 		}
 	}
+
+	checkpoint.Commit()
 
 	// All good. Hook up the new block.
 	rtState.Timer.Stop(ctx)
@@ -706,7 +717,7 @@ func (app *rootHashApplication) postProcessFinalizedBlock(ctx *abci.Context, rtS
 }
 
 func (app *rootHashApplication) tryFinalizeBlock(
-	ctx *abci.Context,
+	ctx *tmapi.Context,
 	rtState *roothashState.RuntimeState,
 	mergeForced bool,
 ) error {

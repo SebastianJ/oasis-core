@@ -1149,11 +1149,25 @@ func testPruneBasic(t *testing.T, ndb db.NodeDB) {
 	err = ndb.Finalize(ctx, testNs, 2, []hash.Hash{rootHash3})
 	require.NoError(t, err, "Finalize")
 
+	earliestRound, err := ndb.GetEarliestRound(ctx)
+	require.NoError(t, err, "GetEarliestRound")
+	require.EqualValues(t, 0, earliestRound, "earliest round should be correct")
+	latestRound, err := ndb.GetLatestRound(ctx)
+	require.NoError(t, err, "GetLatestRound")
+	require.EqualValues(t, 2, latestRound, "latest round should be correct")
+
 	// Prune round 0.
 	pruned, err := ndb.Prune(ctx, testNs, 0)
 	require.NoError(t, err, "Prune")
 	// Two nodes should have been pruned (root and left child).
 	require.EqualValues(t, 2, pruned)
+
+	earliestRound, err = ndb.GetEarliestRound(ctx)
+	require.NoError(t, err, "GetEarliestRound")
+	require.EqualValues(t, 1, earliestRound, "earliest round should be correct")
+	latestRound, err = ndb.GetLatestRound(ctx)
+	require.NoError(t, err, "GetLatestRound")
+	require.EqualValues(t, 2, latestRound, "latest round should be correct")
 
 	// Keys must still be available in round 2.
 	tree = NewWithRoot(nil, ndb, node.Root{Namespace: testNs, Round: 2, Hash: rootHash3})
@@ -1940,7 +1954,7 @@ func TestUrkelBadgerBackend(t *testing.T) {
 		// Create a Badger-backed Node DB.
 		ndb, err := badgerDb.New(&db.Config{
 			DB:           dir,
-			DebugNoFsync: true,
+			NoFsync:      true,
 			Namespace:    testNs,
 			MaxCacheSize: 16 * 1024 * 1024,
 		})

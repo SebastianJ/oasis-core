@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/tendermint/tendermint/abci/types"
 
 	"github.com/oasislabs/oasis-core/go/common"
 	"github.com/oasislabs/oasis-core/go/common/cbor"
-	"github.com/oasislabs/oasis-core/go/consensus/tendermint/abci"
 	tmapi "github.com/oasislabs/oasis-core/go/consensus/tendermint/api"
 	keymanagerState "github.com/oasislabs/oasis-core/go/consensus/tendermint/apps/keymanager/state"
 	genesis "github.com/oasislabs/oasis-core/go/genesis/api"
@@ -17,7 +17,7 @@ import (
 	registry "github.com/oasislabs/oasis-core/go/registry/api"
 )
 
-func (app *keymanagerApplication) InitChain(ctx *abci.Context, request types.RequestInitChain, doc *genesis.Document) error {
+func (app *keymanagerApplication) InitChain(ctx *tmapi.Context, request types.RequestInitChain, doc *genesis.Document) error {
 	st := doc.KeyManager
 
 	b, _ := json.Marshal(st)
@@ -68,7 +68,9 @@ func (app *keymanagerApplication) InitChain(ctx *abci.Context, request types.Req
 		}
 
 		// Set, enqueue for emit.
-		state.SetStatus(v)
+		if err := state.SetStatus(ctx, v); err != nil {
+			return fmt.Errorf("tendermint/keymanager: failed to set status: %w", err)
+		}
 		toEmit = append(toEmit, v)
 	}
 
@@ -80,7 +82,7 @@ func (app *keymanagerApplication) InitChain(ctx *abci.Context, request types.Req
 }
 
 func (kq *keymanagerQuerier) Genesis(ctx context.Context) (*keymanager.Genesis, error) {
-	statuses, err := kq.state.Statuses()
+	statuses, err := kq.state.Statuses(ctx)
 	if err != nil {
 		return nil, err
 	}

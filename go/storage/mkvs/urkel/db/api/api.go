@@ -44,18 +44,21 @@ var (
 )
 
 // Config is the node database backend configuration.
-type Config struct {
+type Config struct { // nolint: maligned
 	// DB is the path to the database.
 	DB string
 
-	// DebugNoFsync will disable fsync() where possible.
-	DebugNoFsync bool
+	// NoFsync will disable fsync() where possible.
+	NoFsync bool
 
 	// Namespace is the namespace contained within the database.
 	Namespace common.Namespace
 
 	// MaxCacheSize is the maximum in-memory cache size for the database.
 	MaxCacheSize int64
+
+	// DiscardWriteLogs will cause all write logs to be discarded.
+	DiscardWriteLogs bool
 }
 
 // NodeDB is the persistence layer used for persisting the in-memory tree.
@@ -65,6 +68,15 @@ type NodeDB interface {
 
 	// GetWriteLog retrieves a write log between two storage instances from the database.
 	GetWriteLog(ctx context.Context, startRoot node.Root, endRoot node.Root) (writelog.Iterator, error)
+
+	// GetLatestRound returns the most recent round in the node database.
+	GetLatestRound(ctx context.Context) (uint64, error)
+
+	// GetEarliestRound returns the earliest round in the node database.
+	GetEarliestRound(ctx context.Context) (uint64, error)
+
+	// GetRootsForRound returns a list of roots stored under the given round.
+	GetRootsForRound(ctx context.Context, round uint64) ([]hash.Hash, error)
 
 	// NewBatch starts a new batch.
 	//
@@ -86,6 +98,9 @@ type NodeDB interface {
 	//
 	// Returns the number of pruned nodes.
 	Prune(ctx context.Context, namespace common.Namespace, round uint64) (int, error)
+
+	// Size returns the size of the database in bytes.
+	Size() (int64, error)
 
 	// Close closes the database.
 	Close()
@@ -168,6 +183,18 @@ func (d *nopNodeDB) GetWriteLog(ctx context.Context, startRoot node.Root, endRoo
 	return nil, ErrWriteLogNotFound
 }
 
+func (d *nopNodeDB) GetLatestRound(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
+func (d *nopNodeDB) GetEarliestRound(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
+func (d *nopNodeDB) GetRootsForRound(ctx context.Context, round uint64) ([]hash.Hash, error) {
+	return nil, nil
+}
+
 func (d *nopNodeDB) HasRoot(root node.Root) bool {
 	return false
 }
@@ -180,7 +207,10 @@ func (d *nopNodeDB) Prune(ctx context.Context, namespace common.Namespace, round
 	return 0, nil
 }
 
-// Close is a no-op.
+func (d *nopNodeDB) Size() (int64, error) {
+	return 0, nil
+}
+
 func (d *nopNodeDB) Close() {
 }
 

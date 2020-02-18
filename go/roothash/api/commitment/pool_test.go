@@ -1,6 +1,7 @@
 package commitment
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"testing"
@@ -58,7 +59,7 @@ type staticNodeLookup struct {
 	runtime *node.Runtime
 }
 
-func (n *staticNodeLookup) Node(id signature.PublicKey) (*node.Node, error) {
+func (n *staticNodeLookup) Node(ctx context.Context, id signature.PublicKey) (*node.Node, error) {
 	return &node.Node{
 		ID:       id,
 		Runtimes: []*node.Runtime{n.runtime},

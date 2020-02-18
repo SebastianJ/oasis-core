@@ -1,7 +1,6 @@
 module github.com/oasislabs/oasis-core/go
 
 replace (
-	github.com/tendermint/iavl => github.com/oasislabs/iavl v0.12.0-ekiden3
 	github.com/tendermint/tendermint => github.com/oasislabs/tendermint v0.32.8-oasis2
 	golang.org/x/crypto/curve25519 => github.com/oasislabs/ed25519/extra/x25519 v0.0.0-20191022155220-a426dcc8ad5f
 	golang.org/x/crypto/ed25519 => github.com/oasislabs/ed25519 v0.0.0-20191109133925-b197a691e30d
@@ -59,7 +58,6 @@ require (
 	github.com/stretchr/testify v1.4.0
 	github.com/tecbot/gorocksdb v0.0.0-20190519120508-025c3cf4ffb4 // indirect
 	github.com/tendermint/go-amino v0.15.0 // indirect
-	github.com/tendermint/iavl v0.12.2
 	github.com/tendermint/tendermint v0.32.8
 	github.com/tendermint/tm-db v0.2.0
 	github.com/thepudds/fzgo v0.2.2

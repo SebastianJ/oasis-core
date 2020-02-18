@@ -1,6 +1,7 @@
 package commitment
 
 import (
+	"context"
 	"time"
 
 	"github.com/oasislabs/oasis-core/go/common/cbor"
@@ -47,7 +48,7 @@ type SignatureVerifier interface {
 // NodeLookup is an interface for looking up registry node descriptors.
 type NodeLookup interface {
 	// Node looks up a node descriptor.
-	Node(id signature.PublicKey) (*node.Node, error)
+	Node(ctx context.Context, id signature.PublicKey) (*node.Node, error)
 }
 
 // Pool is a serializable pool of commitments that can be used to perform
@@ -173,7 +174,7 @@ func (p *Pool) addOpenExecutorCommitment(blk *block.Block, sv SignatureVerifier,
 
 	// Verify RAK-attestation.
 	if p.Runtime.TEEHardware != node.TEEHardwareInvalid {
-		n, err := nl.Node(id)
+		n, err := nl.Node(context.TODO(), id)
 		if err != nil {
 			// This should never happen as nodes cannot disappear mid-epoch.
 			logger.Warn("unable to fetch node descriptor to verify RAK-attestation",

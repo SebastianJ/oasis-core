@@ -118,17 +118,18 @@ func (m *metadata) setLastFinalizedRound(round uint64) {
 // New creates a new BadgerDB-backed node database.
 func New(cfg *api.Config) (api.NodeDB, error) {
 	db := &badgerNodeDB{
-		logger:    logging.GetLogger("urkel/db/badger"),
-		namespace: cfg.Namespace,
+		logger:           logging.GetLogger("urkel/db/badger"),
+		namespace:        cfg.Namespace,
+		discardWriteLogs: cfg.DiscardWriteLogs,
 	}
 
 	opts := badger.DefaultOptions(cfg.DB)
 	opts = opts.WithLogger(cmnBadger.NewLogAdapter(db.logger))
-	opts = opts.WithSyncWrites(!cfg.DebugNoFsync)
+	opts = opts.WithSyncWrites(!cfg.NoFsync)
 	// Allow value log truncation if required (this is needed to recover the
 	// value log file which can get corrupted in crashes).
 	opts = opts.WithTruncate(true)
-	opts = opts.WithCompression(options.None)
+	opts = opts.WithCompression(options.Snappy)
 	opts = opts.WithMaxCacheSize(cfg.MaxCacheSize)
 
 	var err error
@@ -147,10 +148,12 @@ func New(cfg *api.Config) (api.NodeDB, error) {
 	return db, nil
 }
 
-type badgerNodeDB struct {
+type badgerNodeDB struct { // nolint: maligned
 	logger *logging.Logger
 
 	namespace common.Namespace
+
+	discardWriteLogs bool
 
 	db   *badger.DB
 	gc   *cmnBadger.GCWorker
@@ -256,6 +259,9 @@ func (d *badgerNodeDB) GetNode(root node.Root, ptr *node.Pointer) (node.Node, er
 }
 
 func (d *badgerNodeDB) GetWriteLog(ctx context.Context, startRoot node.Root, endRoot node.Root) (writelog.Iterator, error) {
+	if d.discardWriteLogs {
+		return nil, api.ErrWriteLogNotFound
+	}
 	if !endRoot.Follows(&startRoot) {
 		return nil, api.ErrRootMustFollowOld
 	}
@@ -385,6 +391,50 @@ func (d *badgerNodeDB) GetWriteLog(ctx context.Context, startRoot node.Root, end
 	return nil, api.ErrWriteLogNotFound
 }
 
+func (d *badgerNodeDB) GetLatestRound(ctx context.Context) (uint64, error) {
+	round, _ := d.meta.getLastFinalizedRound()
+	return round, nil
+}
+
+func (d *badgerNodeDB) GetEarliestRound(ctx context.Context) (round uint64, err error) {
+	err = d.db.View(func(tx *badger.Txn) error {
+		it := tx.NewIterator(badger.IteratorOptions{Prefix: rootLinkKeyFmt.Encode()})
+		defer it.Close()
+
+		if it.Rewind(); it.Valid() && !rootLinkKeyFmt.Decode(it.Item().Key(), &round) {
+			// This should not happen as the Badger iterator should take care of it.
+			panic("urkel/db/badger: bad iterator")
+		}
+		return nil
+	})
+	return
+}
+
+func (d *badgerNodeDB) GetRootsForRound(ctx context.Context, round uint64) (roots []hash.Hash, err error) {
+	err = d.db.View(func(tx *badger.Txn) error {
+		prefix := rootLinkKeyFmt.Encode(round)
+		it := tx.NewIterator(badger.IteratorOptions{Prefix: prefix})
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			var decRound uint64
+			var rootHash hash.Hash
+
+			if !rootLinkKeyFmt.Decode(it.Item().Key(), &decRound, &rootHash) {
+				// This should not happen as the Badger iterator should take care of it.
+				panic("urkel/db/badger: bad iterator")
+			}
+
+			// Multiple entries for the same root may exist due to multiple root link records.
+			if len(roots) == 0 || !rootHash.Equal(&roots[0]) {
+				roots = append(roots, rootHash)
+			}
+		}
+		return nil
+	})
+	return
+}
+
 func (d *badgerNodeDB) HasRoot(root node.Root) bool {
 	if err := d.sanityCheckNamespace(root.Namespace); err != nil {
 		return false
@@ -500,6 +550,7 @@ func (d *badgerNodeDB) Finalize(ctx context.Context, namespace common.Namespace,
 			}
 			continue
 		}
+		// TODO: Consider removing empty root links in case an actual link is present.
 
 		rootGcUpdatesKey := rootGcUpdatesKeyFmt.Encode(round, &rootHash)
 		rootAddedNodesKey := rootAddedNodesKeyFmt.Encode(round, &rootHash)
@@ -764,6 +815,11 @@ func (d *badgerNodeDB) NewBatch(oldRoot node.Root, chunk bool) api.Batch {
 	}
 }
 
+func (d *badgerNodeDB) Size() (int64, error) {
+	lsm, vlog := d.db.Size()
+	return lsm + vlog, nil
+}
+
 func (d *badgerNodeDB) Close() {
 	d.closeOnce.Do(func() {
 		d.gc.Close()
@@ -844,6 +900,9 @@ func (ba *badgerBatch) MaybeStartSubtree(subtree api.Subtree, depth node.Depth, 
 func (ba *badgerBatch) PutWriteLog(writeLog writelog.WriteLog, annotations writelog.Annotations) error {
 	if ba.chunk {
 		return fmt.Errorf("urkel/db/badger: cannot put write log in chunk mode")
+	}
+	if ba.db.discardWriteLogs {
+		return nil
 	}
 
 	ba.writeLog = writeLog

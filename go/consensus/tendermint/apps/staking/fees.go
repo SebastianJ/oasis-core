@@ -5,15 +5,21 @@ import (
 
 	"github.com/oasislabs/oasis-core/go/common/crypto/signature"
 	"github.com/oasislabs/oasis-core/go/common/quantity"
-	"github.com/oasislabs/oasis-core/go/consensus/tendermint/abci"
+	abciAPI "github.com/oasislabs/oasis-core/go/consensus/tendermint/api"
 	stakingState "github.com/oasislabs/oasis-core/go/consensus/tendermint/apps/staking/state"
 )
 
 // disburseFees disburses fees.
 //
 // In case of errors the state may be inconsistent.
-func (app *stakingApplication) disburseFees(ctx *abci.Context, stakeState *stakingState.MutableState, proposerEntity *signature.PublicKey, numEligibleValidators int, signingEntities []signature.PublicKey) error {
-	totalFees, err := stakeState.LastBlockFees()
+func (app *stakingApplication) disburseFees(
+	ctx *abciAPI.Context,
+	stakeState *stakingState.MutableState,
+	proposerEntity *signature.PublicKey,
+	numEligibleValidators int,
+	signingEntities []signature.PublicKey,
+) error {
+	totalFees, err := stakeState.LastBlockFees(ctx)
 	if err != nil {
 		return fmt.Errorf("staking: failed to query last block fees: %w", err)
 	}
@@ -34,7 +40,7 @@ func (app *stakingApplication) disburseFees(ctx *abci.Context, stakeState *staki
 	// proposer $P$. The ratio of this split are controlled by `FeeSplitVote` and `FeeSplitPropose`.
 	// Portions corresponding to validators that don't sign the block go to the common pool.
 
-	consensusParameters, err := stakeState.ConsensusParameters()
+	consensusParameters, err := stakeState.ConsensusParameters(ctx)
 	if err != nil {
 		return fmt.Errorf("staking: failed to load consensus parameters: %w", err)
 	}
@@ -87,7 +93,10 @@ func (app *stakingApplication) disburseFees(ctx *abci.Context, stakeState *staki
 	if !proposeTotal.IsZero() {
 		if proposerEntity != nil {
 			// Perform the transfer.
-			acct := stakeState.Account(*proposerEntity)
+			acct, err := stakeState.Account(ctx, *proposerEntity)
+			if err != nil {
+				return fmt.Errorf("failed to fetch account: %w", err)
+			}
 			if err = quantity.Move(&acct.General.Balance, totalFees, proposeTotal); err != nil {
 				ctx.Logger().Error("failed to disburse fees (propose)",
 					"err", err,
@@ -96,14 +105,19 @@ func (app *stakingApplication) disburseFees(ctx *abci.Context, stakeState *staki
 				)
 				return fmt.Errorf("staking: failed to disburse fees (propose): %w", err)
 			}
-			stakeState.SetAccount(*proposerEntity, acct)
+			if err = stakeState.SetAccount(ctx, *proposerEntity, acct); err != nil {
+				return fmt.Errorf("failed to set account: %w", err)
+			}
 		}
 	}
 	// Pay voters.
 	if !perVIVote.IsZero() {
 		for _, voterEntity := range signingEntities {
 			// Perform the transfer.
-			acct := stakeState.Account(voterEntity)
+			acct, err := stakeState.Account(ctx, voterEntity)
+			if err != nil {
+				return fmt.Errorf("failed to fetch account: %w", err)
+			}
 			if err = quantity.Move(&acct.General.Balance, totalFees, perVIVote); err != nil {
 				ctx.Logger().Error("failed to disburse fees (vote)",
 					"err", err,
@@ -112,23 +126,27 @@ func (app *stakingApplication) disburseFees(ctx *abci.Context, stakeState *staki
 				)
 				return fmt.Errorf("staking: failed to disburse fees (vote): %w", err)
 			}
-			stakeState.SetAccount(voterEntity, acct)
+			if err = stakeState.SetAccount(ctx, voterEntity, acct); err != nil {
+				return fmt.Errorf("failed to set account: %w", err)
+			}
 		}
 	}
 	// Any remainder goes to the common pool.
 	if !totalFees.IsZero() {
-		commonPool, err := stakeState.CommonPool()
+		commonPool, err := stakeState.CommonPool(ctx)
 		if err != nil {
 			return fmt.Errorf("staking: failed to query common pool: %w", err)
 		}
-		if err := quantity.Move(commonPool, totalFees, totalFees); err != nil {
+		if err = quantity.Move(commonPool, totalFees, totalFees); err != nil {
 			ctx.Logger().Error("failed to move remainder to common pool",
 				"err", err,
 				"amount", totalFees,
 			)
 			return fmt.Errorf("staking: failed to move to common pool: %w", err)
 		}
-		stakeState.SetCommonPool(commonPool)
+		if err = stakeState.SetCommonPool(ctx, commonPool); err != nil {
+			return fmt.Errorf("failed to set common pool: %w", err)
+		}
 	}
 
 	return nil
