@@ -248,7 +248,7 @@ func (s *applicationState) doCommit(now time.Time) error {
 	}
 	// NOTE: Finalization could be done in parallel, together with pruning since replay into
 	//       non-finalized rounds is possible.
-	if err = s.storage.NodeDB().Finalize(s.ctx, s.stateRoot.Namespace, s.stateRoot.Round+1, []hash.Hash{stateRootHash}); err != nil {
+	if err = s.storage.NodeDB().Finalize(s.ctx, s.stateRoot.Round+1, []hash.Hash{stateRootHash}); err != nil {
 		return fmt.Errorf("failed to finalize round %d: %w", s.stateRoot.Round+1, err)
 	}
 

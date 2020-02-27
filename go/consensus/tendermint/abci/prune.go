@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/oasislabs/oasis-core/go/common"
 	"github.com/oasislabs/oasis-core/go/common/logging"
 	nodedb "github.com/oasislabs/oasis-core/go/storage/mkvs/urkel/db/api"
 )
@@ -131,7 +130,15 @@ func (p *genericPruner) doPrune(ctx context.Context, latestVersion uint64) error
 			"pruned_version", i,
 		)
 
-		if _, err := p.ndb.Prune(ctx, common.Namespace{}, i); err != nil {
+		err := p.ndb.Prune(ctx, i)
+		switch err {
+		case nil:
+		case nodedb.ErrNotEarliest:
+			p.logger.Debug("Prune: skipping non-earliest version",
+				"version", i,
+			)
+			continue
+		default:
 			return err
 		}
 	}
