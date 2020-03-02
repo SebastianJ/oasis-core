@@ -10,12 +10,18 @@ import (
 	"github.com/oasislabs/oasis-core/go/common/entity"
 	"github.com/oasislabs/oasis-core/go/common/logging"
 	"github.com/oasislabs/oasis-core/go/common/node"
+	"github.com/oasislabs/oasis-core/go/common/quantity"
 	epochtime "github.com/oasislabs/oasis-core/go/epochtime/api"
 	"github.com/oasislabs/oasis-core/go/oasis-node/cmd/common/flags"
+	staking "github.com/oasislabs/oasis-core/go/staking/api"
 )
 
 // SanityCheck does basic sanity checking on the genesis state.
-func (g *Genesis) SanityCheck(baseEpoch epochtime.EpochTime) error {
+func (g *Genesis) SanityCheck(
+	baseEpoch epochtime.EpochTime,
+	stakeLedger map[signature.PublicKey]*staking.Account,
+	stakeThresholds map[staking.ThresholdKind]quantity.Quantity,
+) error {
 	logger := logging.GetLogger("genesis/sanity-check")
 
 	if !flags.DebugDontBlameOasis() {
@@ -33,6 +39,11 @@ func (g *Genesis) SanityCheck(baseEpoch epochtime.EpochTime) error {
 		return err
 	}
 
+	// Check that all entities have enough stake to be registered.
+	if err = SanityCheckEntitiesStake(logger, seenEntities, stakeLedger, stakeThresholds); err != nil {
+		return err
+	}
+
 	// Check runtimes.
 	runtimesLookup, err := SanityCheckRuntimes(logger, &g.Parameters, g.Runtimes, g.SuspendedRuntimes, true)
 	if err != nil {
@@ -41,6 +52,28 @@ func (g *Genesis) SanityCheck(baseEpoch epochtime.EpochTime) error {
 
 	// Check nodes.
 	return SanityCheckNodes(logger, &g.Parameters, g.Nodes, seenEntities, runtimesLookup, true, baseEpoch)
+}
+
+// SanityCheckEntitiesStake examines if all seen entities have an associated
+// account and enough stake to be registered.
+func SanityCheckEntitiesStake(
+	logger *logging.Logger,
+	seenEntities map[signature.PublicKey]*entity.Entity,
+	stakeLedger map[signature.PublicKey]*staking.Account,
+	stakeThresholds map[staking.ThresholdKind]quantity.Quantity,
+) error {
+	for _, entity := range seenEntities {
+		acct := stakeLedger[entity.ID]
+		if acct == nil {
+			return fmt.Errorf("registry: sanity check failed: no account associated with entity with ID: %v", entity.ID)
+		}
+		entityThreshold := stakeThresholds[staking.KindEntity]
+		escrowActiveBalance := acct.Escrow.Active.Balance
+		if escrowActiveBalance.Cmp(&entityThreshold) < 0 {
+			return fmt.Errorf("registry: sanity check failed: entity with ID: %s has insufficient stake to be registered: %s (required: %s)", entity.ID, escrowActiveBalance, entityThreshold)
+		}
+	}
+	return nil
 }
 
 // SanityCheckEntities examines the entities table.
