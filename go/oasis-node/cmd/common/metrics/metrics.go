@@ -131,7 +131,7 @@ func (s *stubService) Cleanup() {}
 func newStubService() (service.BackgroundService, error) {
 	svc := *service.NewBaseBackgroundService("metrics")
 
-	d, err := NewDiskUsageService()
+	d, err := NewDiskService()
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func newPullService(ctx context.Context) (service.BackgroundService, error) {
 		return nil, err
 	}
 
-	d, err := NewDiskUsageService()
+	d, err := NewDiskService()
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,7 @@ func newPushService() (service.BackgroundService, error) {
 		pusher = pusher.Grouping(k, v)
 	}
 
-	d, err := NewDiskUsageService()
+	d, err := NewDiskService()
 	if err != nil {
 		return nil, err
 	}
@@ -381,11 +381,11 @@ func (d *diskService) worker() {
 	}
 }
 
-// NewDiskUsageService constructs a new disk usage service.
+// NewDiskService constructs a new disk usage and I/O service.
 //
-// This service will compute the size of datadir folder by calling "du" command and read I/O info from /proc/<PID>/io
-// file every --metric.push.interval seconds.
-func NewDiskUsageService() (service.BackgroundService, error) {
+// This service will compute the size of datadir folder and read I/O info of the process every --metric.push.interval
+// seconds.
+func NewDiskService() (service.BackgroundService, error) {
 	diskOnce.Do(func() {
 		prometheus.MustRegister(diskCollectors...)
 	})

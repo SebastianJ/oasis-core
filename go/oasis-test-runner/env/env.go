@@ -21,8 +21,8 @@ type CleanupFn func()
 
 // TestInstanceInfo contains information of the current test run.
 type TestInstanceInfo struct {
-	// Name is the name of the test.
-	Name string `json:"name"`
+	// Test is the name of the test.
+	Test string `json:"test"`
 
 	// Instance is the instance name of the test. e.g. oasis-test-runner123456
 	Instance string `json:"instance"`

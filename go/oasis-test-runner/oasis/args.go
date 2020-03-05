@@ -421,7 +421,7 @@ func (args *argBuilder) appendNodeMetrics(node *Node) *argBuilder {
 	ti := node.net.env.TestInfo()
 	l := []string{"instance=" + ti.Instance,
 		"run=" + strconv.Itoa(ti.Run),
-		"test=" + ti.Name,
+		"test=" + ti.Test,
 		"software_version=" + version.SoftwareVersion,
 	}
 	// Populate it with test-provided parameters.

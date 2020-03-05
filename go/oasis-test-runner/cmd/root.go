@@ -9,9 +9,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -59,6 +62,21 @@ var (
 	scenarioMap      = make(map[string]scenario.Scenario)
 	defaultScenarios []scenario.Scenario
 	scenarios        []scenario.Scenario
+
+	// oasis-test-runner-specific metrics.
+	upGauge = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "up",
+			Help: "Is oasis-test-runner test active",
+		},
+	)
+
+	oasisTestRunnerCollectors = []prometheus.Collector{
+		upGauge,
+	}
+
+	pusher              *push.Pusher
+	oasisTestRunnerOnce sync.Once
 )
 
 // RootCmd returns the root command's structure that will be executed, so that
@@ -254,6 +272,12 @@ func initRootEnv(cmd *cobra.Command) (*env.Env, error) {
 func runRoot(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 
+	if viper.GetString(metrics.CfgMetricsAddr) != "" {
+		oasisTestRunnerOnce.Do(func() {
+			prometheus.MustRegister(oasisTestRunnerCollectors...)
+		})
+	}
+
 	// Initialize the base dir, logging, etc.
 	rootEnv, err := initRootEnv(cmd)
 	if err != nil {
@@ -326,7 +350,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 				)
 
 				childEnv, err := rootEnv.NewChild(n, env.TestInstanceInfo{
-					Name:         v.Name(),
+					Test:         v.Name(),
 					Instance:     filepath.Base(rootEnv.Dir()),
 					ParameterSet: scenario.ParametersToStringMap(v.Parameters()),
 					Run:          run,
@@ -342,6 +366,15 @@ func runRoot(cmd *cobra.Command, args []string) error {
 				// Dump current parameter set to file.
 				if err = childEnv.WriteTestInstanceInfo(); err != nil {
 					return err
+				}
+
+				// Init per-run prometheus pusher, if metrics are enabled.
+				if viper.GetString(metrics.CfgMetricsAddr) != "" {
+					pusher = push.New(viper.GetString(metrics.CfgMetricsAddr), "oasis-test-runner")
+					pusher = pusher.Grouping("instance", childEnv.TestInfo().Instance)
+					pusher = pusher.Grouping("run", strconv.Itoa(childEnv.TestInfo().Run))
+					pusher = pusher.Grouping("test", childEnv.TestInfo().Test)
+					pusher = pusher.Gatherer(prometheus.DefaultGatherer)
 				}
 
 				if err = doScenario(childEnv, v); err != nil {
@@ -406,9 +439,25 @@ func doScenario(childEnv *env.Env, scenario scenario.Scenario) (err error) {
 		return
 	}
 
+	if pusher != nil {
+		upGauge.Set(1.0)
+		if err = pusher.Push(); err != nil {
+			err = errors.Wrap(err, "root: failed to push metrics")
+			return
+		}
+	}
+
 	if err = scenario.Run(childEnv); err != nil {
 		err = errors.Wrap(err, "root: failed to run test case")
 		return
+	}
+
+	if pusher != nil {
+		upGauge.Set(0.0)
+		if err = pusher.Push(); err != nil {
+			err = errors.Wrap(err, "root: failed to push metrics")
+			return
+		}
 	}
 
 	return
