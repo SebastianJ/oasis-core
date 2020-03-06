@@ -573,7 +573,7 @@ func (mux *abciMux) decodeTx(ctx *Context, rawTx []byte) (*transaction.Transacti
 		return nil, nil, fmt.Errorf("halt mode, rejecting all transactions")
 	}
 
-	params, err := mux.state.ConsensusParameters()
+	/*params, err := mux.state.ConsensusParameters()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch consensus parameters: %w", err)
 	}
@@ -584,7 +584,7 @@ func (mux *abciMux) decodeTx(ctx *Context, rawTx []byte) (*transaction.Transacti
 			"tx_size", len(rawTx),
 		)
 		return nil, nil, consensus.ErrOversizedTx
-	}
+	}*/
 
 	// Unmarshal envelope and verify transaction.
 	var sigTx transaction.SignedTransaction
@@ -601,12 +601,12 @@ func (mux *abciMux) decodeTx(ctx *Context, rawTx []byte) (*transaction.Transacti
 		)
 		return nil, nil, err
 	}
-	if err := tx.SanityCheck(); err != nil {
+	/*if err := tx.SanityCheck(); err != nil {
 		ctx.Logger().Error("bad transaction",
 			"tx", base64.StdEncoding.EncodeToString(rawTx),
 		)
 		return nil, nil, err
-	}
+	}*/
 
 	return &tx, &sigTx, nil
 }
