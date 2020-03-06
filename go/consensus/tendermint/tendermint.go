@@ -501,26 +501,35 @@ func (t *tendermintService) SubmitTx(ctx context.Context, tx *transaction.Signed
 func (t *tendermintService) broadcastTxRaw(data []byte) error {
 	// We could use t.client.BroadcastTxSync but that is annoying as it
 	// doesn't give you the right fields when CheckTx fails.
-	mp := t.node.Mempool()
 
-	// Submit the transaction to mempool and wait for response.
-	ch := make(chan *tmabcitypes.Response, 1)
-	err := mp.CheckTx(tmtypes.Tx(data), func(rsp *tmabcitypes.Response) {
-		ch <- rsp
-		close(ch)
-	}, tmmempool.TxInfo{})
+	_, err := t.client.BroadcastTxSync(tmtypes.Tx(data))
 	if err != nil {
-		return fmt.Errorf("tendermint: failed to submit to local mempool: %w", err)
+		return err
 	}
 
-	rsp := <-ch
-	if result := rsp.GetCheckTx(); !result.IsOK() {
-		err := errors.FromCode(result.GetCodespace(), result.GetCode())
-		if err == nil {
-			// Fallback to an ordinary error.
-			err = fmt.Errorf(result.GetLog())
+	disabled := true
+	if !disabled {
+		mp := t.node.Mempool()
+
+		// Submit the transaction to mempool and wait for response.
+		ch := make(chan *tmabcitypes.Response, 1)
+		err := mp.CheckTx(tmtypes.Tx(data), func(rsp *tmabcitypes.Response) {
+			ch <- rsp
+			close(ch)
+		}, tmmempool.TxInfo{})
+		if err != nil {
+			return fmt.Errorf("tendermint: failed to submit to local mempool: %w", err)
 		}
-		return err
+
+		rsp := <-ch
+		if result := rsp.GetCheckTx(); !result.IsOK() {
+			err := errors.FromCode(result.GetCodespace(), result.GetCode())
+			if err == nil {
+				// Fallback to an ordinary error.
+				err = fmt.Errorf(result.GetLog())
+			}
+			return err
+		}
 	}
 
 	return nil
