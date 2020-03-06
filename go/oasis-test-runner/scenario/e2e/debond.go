@@ -21,6 +21,12 @@ type debondImpl struct {
 	basicImpl
 }
 
+func (s *debondImpl) Clone() scenario.Scenario {
+	return &debondImpl{
+		basicImpl: *s.basicImpl.Clone().(*basicImpl),
+	}
+}
+
 func (s *debondImpl) Fixture() (*oasis.NetworkFixture, error) {
 	f, err := s.basicImpl.Fixture()
 	if err != nil {
