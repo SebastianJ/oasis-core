@@ -4,6 +4,7 @@ package consensus
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 
@@ -84,7 +85,11 @@ func doSubmitTx(cmd *cobra.Command, args []string) {
 
 	tx := loadTx()
 
+	tx.PrettyPrint("", os.Stdout)
+	fmt.Println("")
+
 	if err := client.SubmitTx(context.Background(), tx); err != nil {
+		fmt.Printf("Error occurred while trying to submit transaction, error: %s\n", err.Error())
 		logger.Error("failed to submit transaction",
 			"err", err,
 		)
