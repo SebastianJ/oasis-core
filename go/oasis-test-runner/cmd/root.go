@@ -371,10 +371,13 @@ func runRoot(cmd *cobra.Command, args []string) error {
 				// Init per-run prometheus pusher, if metrics are enabled.
 				if viper.GetString(metrics.CfgMetricsAddr) != "" {
 					pusher = push.New(viper.GetString(metrics.CfgMetricsAddr), "oasis-test-runner")
-					pusher = pusher.Grouping("instance", childEnv.TestInfo().Instance)
-					pusher = pusher.Grouping("run", strconv.Itoa(childEnv.TestInfo().Run))
-					pusher = pusher.Grouping("test", childEnv.TestInfo().Test)
-					pusher = pusher.Gatherer(prometheus.DefaultGatherer)
+					pusher = pusher.
+						Grouping("instance", childEnv.TestInfo().Instance).
+						Grouping("run", strconv.Itoa(childEnv.TestInfo().Run)).
+						Grouping("test", childEnv.TestInfo().Test).
+						Grouping("software_version", version.SoftwareVersion).
+						Grouping("git_branch", version.GitBranch).
+						Gatherer(prometheus.DefaultGatherer)
 				}
 
 				if err = doScenario(childEnv, v); err != nil {

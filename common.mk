@@ -49,6 +49,9 @@ ifeq ($(and $(LATEST_TAG),$(IS_TAG)),NO)
 endif
 export VERSION
 
+GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
+export GIT_BRANCH
+
 # Try to compute the next version based on the latest tag of the origin remote
 # using the Punch tool.
 # First, all tags from the origin remote are fetched. Next, the latest tag on
@@ -90,7 +93,7 @@ GOFLAGS ?= -trimpath -v
 
 # Add Oasis Core's version as a linker string value definition.
 ifneq ($(VERSION),)
-	export GOLDFLAGS ?= "-X github.com/oasislabs/oasis-core/go/common/version.SoftwareVersion=$(VERSION)"
+	export GOLDFLAGS ?= "-X github.com/oasislabs/oasis-core/go/common/version.SoftwareVersion=$(VERSION) -X github.com/oasislabs/oasis-core/go/common/version.GitBranch=$(GIT_BRANCH)"
 endif
 
 # Go build command to use by default.

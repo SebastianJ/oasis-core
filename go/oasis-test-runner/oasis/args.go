@@ -424,6 +424,9 @@ func (args *argBuilder) appendNodeMetrics(node *Node) *argBuilder {
 		"test=" + ti.Test,
 		"software_version=" + version.SoftwareVersion,
 	}
+	if version.GitBranch != "" {
+		l = append(l, "git_branch="+version.GitBranch)
+	}
 	// Populate it with test-provided parameters.
 	for k, v := range ti.ParameterSet {
 		l = append(l, metrics.EscapeLabelCharacters(k)+"="+v)
