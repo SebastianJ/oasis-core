@@ -222,13 +222,13 @@ func (n *Node) QueueCall(ctx context.Context, expectedEpochNumber epochtime.Epoc
 		return api.ErrEpochNumberMismatch
 	}
 
-	if n.checkTxEnabled {
+	/*if n.checkTxEnabled {
 		// Check transaction before queuing it.
 		if err := n.CheckTx(ctx, call); err != nil {
 			return err
 		}
 		n.logger.Debug("worker CheckTx successful, queuing transaction")
-	}
+	}*/
 
 	n.algorithmMutex.RLock()
 	defer n.algorithmMutex.RUnlock()
@@ -488,7 +488,7 @@ func (n *Node) worker() {
 	n.logger.Info("starting committee node")
 
 	var workerEventCh <-chan *host.Event
-	if n.checkTxEnabled {
+	/*if n.checkTxEnabled {
 		// Initialize worker host for the new runtime.
 		workerHost, err := n.InitializeRuntimeWorkerHost(n.ctx)
 		if err != nil {
@@ -515,7 +515,7 @@ func (n *Node) worker() {
 			return
 		}
 		defer n.StopRuntimeWorkerHost()
-	}
+	}*/
 
 	// Initialize transaction scheduler's algorithm.
 	runtime, err := n.commonNode.Runtime.RegistryDescriptor(n.ctx)
@@ -600,7 +600,7 @@ func NewNode(
 
 	n := &Node{
 		RuntimeHostNode:  commonWorker.NewRuntimeHostNode(commonNode, workerHostFactory),
-		checkTxEnabled:   checkTxEnabled,
+		checkTxEnabled:   false,
 		commonNode:       commonNode,
 		executorNode:     executorNode,
 		roleProvider:     roleProvider,

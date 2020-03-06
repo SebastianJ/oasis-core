@@ -25,7 +25,7 @@ func (client *Client) startNode() error {
 	args := newArgBuilder().
 		debugDontBlameOasis().
 		debugAllowTestKeys().
-		tendermintDebugDisableCheckTx(client.consensusDisableCheckTx).
+		tendermintDebugDisableCheckTx(true).
 		tendermintCoreListenAddress(client.consensusPort).
 		storageBackend(storageClient.BackendName).
 		appendNetwork(client.net).
@@ -69,7 +69,7 @@ func (net *Network) NewClient(cfg *ClientCfg) (*Client, error) {
 			Name:                    clientName,
 			net:                     net,
 			dir:                     clientDir,
-			consensusDisableCheckTx: cfg.ConsensusDisableCheckTx,
+			consensusDisableCheckTx: true,
 		},
 		consensusPort: net.nextNodePort,
 	}

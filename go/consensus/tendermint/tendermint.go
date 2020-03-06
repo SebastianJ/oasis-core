@@ -1368,7 +1368,7 @@ func init() {
 	Flags.Uint64(CfgConsensusMinGasPrice, 0, "minimum gas price")
 	Flags.Uint64(CfgConsensusSubmissionGasPrice, 0, "gas price used when submitting consensus transactions")
 	Flags.Uint64(CfgConsensusSubmissionMaxFee, 0, "maximum transaction fee when submitting consensus transactions")
-	Flags.Bool(CfgConsensusDebugDisableCheckTx, false, "do not perform CheckTx on incoming transactions (UNSAFE)")
+	Flags.Bool(CfgConsensusDebugDisableCheckTx, true, "do not perform CheckTx on incoming transactions (UNSAFE)")
 
 	_ = Flags.MarkHidden(cfgLogDebug)
 	_ = Flags.MarkHidden(CfgDebugP2PAddrBookLenient)

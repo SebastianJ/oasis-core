@@ -359,7 +359,7 @@ type ClientFixture struct {
 func (f *ClientFixture) Create(net *Network) (*Client, error) {
 	return net.NewClient(&ClientCfg{
 		NodeCfg: NodeCfg{
-			ConsensusDisableCheckTx: f.ConsensusDisableCheckTx,
+			ConsensusDisableCheckTx: true,
 		},
 	})
 }

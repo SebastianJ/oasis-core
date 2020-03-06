@@ -20,7 +20,8 @@ var Flags = flag.NewFlagSet("", flag.ContinueOnError)
 
 // CheckTxEnabled reads our CheckTx enabled flag from viper.
 func CheckTxEnabled() bool {
-	return viper.GetBool(CfgCheckTxEnabled)
+	return false
+	//return viper.GetBool(CfgCheckTxEnabled)
 }
 
 // New creates a new worker.

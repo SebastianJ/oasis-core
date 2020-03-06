@@ -184,7 +184,7 @@ func newWorker(
 
 	w := &Worker{
 		enabled:        enabled,
-		checkTxEnabled: checkTxEnabled,
+		checkTxEnabled: false,
 		commonWorker:   commonWorker,
 		registration:   registration,
 		executor:       executor,
