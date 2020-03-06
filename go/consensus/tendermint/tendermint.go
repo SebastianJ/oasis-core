@@ -502,7 +502,7 @@ func (t *tendermintService) broadcastTxRaw(data []byte) error {
 	// We could use t.client.BroadcastTxSync but that is annoying as it
 	// doesn't give you the right fields when CheckTx fails.
 
-	_, err := t.client.BroadcastTxSync(tmtypes.Tx(data))
+	_, err := t.client.BroadcastTxAsync(tmtypes.Tx(data))
 	if err != nil {
 		return err
 	}
