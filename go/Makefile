@@ -71,6 +71,7 @@ integrationrunner:
 
 # Fuzzing.
 fuzz-targets := fuzz-consensus \
+	fuzz2 \
 	fuzz-storage \
 	fuzz-mkvs/Tree \
 	fuzz-mkvs/Proof \
@@ -101,6 +102,9 @@ endef
 # Fuzz consensus transactions.
 fuzz-consensus: consensus/tendermint/fuzz/
 	$(canned-fuzz-run)
+# fuzz2.
+fuzz2: consensus/tendermint/fuzz2/
+	$(canned-fuzz-run)
 # Fuzz general storage interface.
 fuzz-storage: storage/fuzz/ oasis-node
 	@mkdir -p /tmp/oasis-node-fuzz-storage/identity
@@ -116,7 +120,7 @@ fuzz-mkvs/Node: storage/mkvs/urkel/fuzz
 	$(canned-fuzz-run)
 
 # Target that only builds all fuzzing infrastructure.
-build-fuzz: FUZZ_BUILD_ONLY=1
+F: FUZZ_BUILD_ONLY=1
 build-fuzz: $(fuzz-targets)
 
 # Clean.

@@ -70,7 +70,7 @@ require (
 	github.com/zondax/ledger-oasis-go v0.3.0
 	gitlab.com/yawning/dynlib.git v0.0.0-20190911075527-1e6ab3739fd8
 	golang.org/x/crypto v0.0.0-20191119213627-4f8c1d86b1ba
-	golang.org/x/net v0.0.0-20190628185345-da137c7871d7
+	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b
 	golang.org/x/sys v0.0.0-20190912141932-bc967efca4b8 // indirect
 	golang.org/x/text v0.3.2 // indirect
 	google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55

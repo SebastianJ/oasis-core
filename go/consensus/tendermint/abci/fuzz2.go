@@ -28,16 +28,19 @@ func FuzzNewABCIMux(ctx context.Context) *abciMux {
 		db.Close()
 		panic(err)
 	}
+	fakeMetricsCh := make(chan struct{})
 	return &abciMux{
 		logger: logging.GetLogger("abci-mux"),
 		state: &applicationState{
-			logger:        logging.GetLogger("abci-mux/state"),
-			ctx:           ctx,
-			db:            db,
-			deliverTxTree: deliverTxTree,
-			blockHash:     blockHash,
-			blockHeight:   blockHeight,
-			ownTxSigner:   ownTxSigner,
+			logger:          logging.GetLogger("abci-mux/state"),
+			ctx:             ctx,
+			db:              db,
+			deliverTxTree:   deliverTxTree,
+			blockHash:       blockHash,
+			blockHeight:     blockHeight,
+			ownTxSigner:     ownTxSigner,
+			metricsCloseCh:  fakeMetricsCh,
+			metricsClosedCh: fakeMetricsCh,
 		},
 		appsByName:     make(map[string]Application),
 		appsByMethod:   make(map[transaction.MethodName]Application),
